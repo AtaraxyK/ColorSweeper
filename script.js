@@ -53,9 +53,7 @@
     startGameBtn: document.getElementById('start-game-btn'),
     toggleSoundBtn: document.getElementById('toggle-sound-btn'),
     giveUpBtn: document.getElementById('give-up-btn'),
-    moveCounter: document.getElementById('move-counter'),
     stageIndicator: document.getElementById('stage-indicator'),
-    substageIndicator: document.getElementById('substage-indicator'),
     playSoundToggleBtn: document.getElementById('play-sound-toggle-btn'),
     boardViewport: document.getElementById('board-viewport'),
     boardCanvas: document.getElementById('board-canvas'),
@@ -719,7 +717,7 @@
       config,
       mainStage: 1,
       subStage: 1,
-      remainingMoves: config.initialMoves,
+      remainingMoves: 0,
       currentColorCount: config.initialColorCount,
       currentBoardSize: config.initialBoardSize,
       board: [],
@@ -727,7 +725,7 @@
       finished: false,
     };
     showPlayScreen();
-    setupCurrentBoard();
+    setupCurrentBoard({ resetMoves: true });
     saveRunStorage();
   }
 
@@ -750,13 +748,16 @@
     showSetupScreen(true);
   }
 
-  function setupCurrentBoard() {
+  function setupCurrentBoard(options = {}) {
     const run = appState.currentRun;
     if (!run) return;
     const generated = generateBoard(run.currentBoardSize, run.currentColorCount);
     run.board = generated.board;
     run.emptyCells = generated.emptyCells;
     run.finished = false;
+    if (options.resetMoves) {
+      run.remainingMoves = estimateBoardMoves(run.board, run.emptyCells, run.currentColorCount) + run.config.initialMoves;
+    }
     renderGameUi();
     requestAnimationFrame(fitBoardToViewport);
     saveRunStorage();
@@ -798,10 +799,9 @@
   function renderGameUi() {
     const run = appState.currentRun;
     if (!run) return;
-    el.moveCounter.textContent = `선택 횟수: ${run.remainingMoves}`;
-    el.stageIndicator.textContent = `Stage ${getVisibleStageNumber(run)}`;
-    el.substageIndicator.textContent = `${run.mainStage}-${run.subStage}`;
-    el.boardInfo.textContent = `${run.currentBoardSize}x${run.currentBoardSize} · ${run.currentColorCount}색`;
+    const visibleStage = getVisibleStageNumber(run);
+    el.stageIndicator.textContent = `Stage ${visibleStage}`;
+    el.boardInfo.textContent = `Stage ${visibleStage} · ${run.currentBoardSize}x${run.currentBoardSize} · ${run.currentColorCount}색 · 선택 횟수 ${run.remainingMoves}`;
     el.boardStatus.textContent = `${run.config.presetName} · 드래그 이동 / 두 손가락 확대·축소`;
     renderBoard();
     renderColorToolbar();
@@ -887,6 +887,35 @@
       emptyCells.add(key);
     });
     return collected.size;
+  }
+
+
+  function estimateBoardMoves(board, emptyCells, colorCount) {
+    const boardCopy = board.map((row) => row.slice());
+    const emptyCopy = new Set(emptyCells);
+    let moves = 0;
+    const safetyLimit = boardCopy.length * boardCopy.length * 3;
+    while (!isBoardCleared(boardCopy) && moves < safetyLimit) {
+      const available = Array.from(getAvailableAdjacentColors(boardCopy, emptyCopy));
+      if (!available.length) break;
+      let bestColor = available[0];
+      let bestGain = -1;
+      for (const colorIndex of available) {
+        const simBoard = boardCopy.map((row) => row.slice());
+        const simEmpty = new Set(emptyCopy);
+        const gain = expandEmptyAreaByColor(simBoard, simEmpty, colorIndex);
+        const frontier = getAvailableAdjacentColors(simBoard, simEmpty).size;
+        const score = gain * 100 + frontier;
+        if (score > bestGain) {
+          bestGain = score;
+          bestColor = colorIndex;
+        }
+      }
+      const changed = expandEmptyAreaByColor(boardCopy, emptyCopy, bestColor);
+      if (changed <= 0) break;
+      moves += 1;
+    }
+    return Math.max(1, moves);
   }
 
   function getAvailableAdjacentColors(board, emptyCells) {
