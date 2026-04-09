@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="color-scheme" content="only light" />
   <title>Color Sweeper</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
@@ -31,13 +32,20 @@
             <div class="card">
               <div class="section-header">
                 <h2>내 프리셋</h2>
-                <div class="inline-actions">
-                  <button id="export-btn" class="secondary-btn hidden" type="button">저장 데이터 복사하기</button>
-                  <button id="import-btn" class="secondary-btn" type="button">저장 데이터 붙여넣기</button>
-                </div>
               </div>
               <div id="custom-preset-empty" class="empty-state">저장된 사용자 프리셋이 없습니다.</div>
               <ul id="custom-preset-list" class="custom-preset-list"></ul>
+            </div>
+
+            <div class="card storage-card">
+              <div class="section-header">
+                <h2>저장 데이터</h2>
+              </div>
+              <div class="storage-actions">
+                <button id="export-btn" class="secondary-btn hidden" type="button">저장 데이터 복사하기</button>
+                <button id="import-btn" class="secondary-btn" type="button">저장 데이터 붙여넣기</button>
+              </div>
+              <p class="subtext small">프리셋 목록과 마지막 선택 설정만 내보내거나 불러옵니다.</p>
             </div>
 
             <div id="clipboard-card" class="card hidden">
@@ -56,7 +64,7 @@
 
           <section class="right-column">
             <div class="card">
-              <div class="section-header">
+              <div class="section-header setup-header-stack">
                 <h2>게임 시작 설정</h2>
                 <button id="toggle-details-btn" class="secondary-btn" type="button">세부 설정 펼치기</button>
               </div>
@@ -70,7 +78,7 @@
                     <input id="preset-name-input" type="text" maxlength="40" placeholder="예: 느긋한 연습용" />
                   </label>
                   <label>
-                    <span>스테이지 당 플레이 횟수</span>
+                    <span>메인 스테이지당 플레이 횟수</span>
                     <input id="sub-stages-per-stage-input" type="number" min="1" max="99" />
                   </label>
                   <label>
@@ -86,7 +94,7 @@
                     <input id="color-increase-every-input" type="number" min="1" max="99" />
                   </label>
                   <label>
-                    <span>색상 증가 개수</span>
+                    <span>색상 증가 값</span>
                     <input id="color-increase-amount-input" type="number" min="0" max="10" />
                   </label>
                   <label>
@@ -94,7 +102,7 @@
                     <input id="board-increase-every-input" type="number" min="1" max="99" />
                   </label>
                   <label>
-                    <span>칸 수 증가 개수</span>
+                    <span>보드 칸 수 증가 값</span>
                     <input id="board-increase-amount-input" type="number" min="0" max="10" />
                   </label>
                   <label>
@@ -106,16 +114,8 @@
                     <input id="max-board-size-input" type="number" min="3" max="30" placeholder="제한 없음" />
                   </label>
                   <label>
-                    <span>판당 여유 선택 횟수</span>
+                    <span>여유 선택 횟수 값</span>
                     <input id="initial-moves-input" type="number" min="0" max="999" />
-                  </label>
-                  <label class="hidden">
-                    <span>판 클리어 시 추가 횟수</span>
-                    <input id="stage-clear-move-bonus-input" type="number" min="0" max="999" />
-                  </label>
-                  <label class="hidden">
-                    <span>보드 확장 시 추가 보너스</span>
-                    <input id="board-grow-move-bonus-input" type="number" min="0" max="999" />
                   </label>
                 </div>
                 <div class="details-actions">

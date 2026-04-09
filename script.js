@@ -46,8 +46,6 @@
     maxColorCountInput: document.getElementById('max-color-count-input'),
     maxBoardSizeInput: document.getElementById('max-board-size-input'),
     initialMovesInput: document.getElementById('initial-moves-input'),
-    stageClearMoveBonusInput: document.getElementById('stage-clear-move-bonus-input'),
-    boardGrowMoveBonusInput: document.getElementById('board-grow-move-bonus-input'),
     savePresetBtn: document.getElementById('save-preset-btn'),
     saveAsNewBtn: document.getElementById('save-as-new-btn'),
     startGameBtn: document.getElementById('start-game-btn'),
@@ -119,8 +117,6 @@
       el.maxColorCountInput,
       el.maxBoardSizeInput,
       el.initialMovesInput,
-      el.stageClearMoveBonusInput,
-      el.boardGrowMoveBonusInput,
     ];
     configInputs.forEach((node) => node.addEventListener('input', onConfigInputChanged));
 
@@ -468,11 +464,11 @@
     el.configSummary.innerHTML = [
       `<strong>${escapeHtml(c.presetName || '이름 없는 설정')}</strong>`,
       `메인 스테이지당 플레이 횟수: ${c.subStagesPerStage}`,
-      `초기: ${c.initialBoardSize}x${c.initialBoardSize} · ${c.initialColorCount}색 · 시작 선택 횟수 ${c.initialMoves}`,
+      `초기: ${c.initialBoardSize}x${c.initialBoardSize} · ${c.initialColorCount}색`,
       `색상 증가: 메인 스테이지 ${c.colorIncreaseEveryStages}회마다 +${c.colorIncreaseAmount}`,
-      `칸 수 증가: 메인 스테이지 ${c.boardIncreaseEveryStages}회마다 +${c.boardIncreaseAmount}`,
+      `보드 칸 수 증가: 메인 스테이지 ${c.boardIncreaseEveryStages}회마다 +${c.boardIncreaseAmount}`,
       `최대 색상 수: ${maxColor} · 최대 칸 수: ${maxBoard}`,
-      `판 클리어 보너스: +${c.stageClearMoveBonus} · 보드 확장 보너스: +${c.boardGrowMoveBonus}`,
+      `여유 선택 횟수 값: ${c.initialMoves}`,
     ].join('<br>');
   }
 
@@ -504,8 +500,6 @@
     el.maxColorCountInput.value = config.maxColorCount == null ? '' : config.maxColorCount;
     el.maxBoardSizeInput.value = config.maxBoardSize == null ? '' : config.maxBoardSize;
     el.initialMovesInput.value = config.initialMoves;
-    el.stageClearMoveBonusInput.value = config.stageClearMoveBonus;
-    el.boardGrowMoveBonusInput.value = config.boardGrowMoveBonus;
   }
 
   function readConfigFromInputs() {
@@ -521,8 +515,6 @@
       maxColorCount: toOptionalNumber(el.maxColorCountInput.value),
       maxBoardSize: toOptionalNumber(el.maxBoardSizeInput.value),
       initialMoves: toNumber(el.initialMovesInput.value),
-      stageClearMoveBonus: toNumber(el.stageClearMoveBonusInput.value),
-      boardGrowMoveBonus: toNumber(el.boardGrowMoveBonusInput.value),
     };
   }
 
@@ -545,9 +537,7 @@
       boardIncreaseAmount: clampInt(raw.boardIncreaseAmount, 0, 10, 1),
       maxColorCount,
       maxBoardSize,
-      initialMoves: clampInt(raw.initialMoves, 1, 999, 10),
-      stageClearMoveBonus: clampInt(raw.stageClearMoveBonus, 0, 999, 0),
-      boardGrowMoveBonus: clampInt(raw.boardGrowMoveBonus, 0, 999, 0),
+      initialMoves: clampInt(raw.initialMoves ?? raw.extraMoveBuffer, 0, 999, 10),
     };
   }
 
@@ -717,14 +707,16 @@
       mainStage: 1,
       subStage: 1,
       remainingMoves: 0,
+      carriedMoves: 0,
       currentColorCount: config.initialColorCount,
       currentBoardSize: config.initialBoardSize,
       board: [],
       emptyCells: new Set(),
       finished: false,
+      boardBaseMoves: 0,
     };
     showPlayScreen();
-    setupCurrentBoard({ resetMoves: true });
+    setupCurrentBoard({ resetMoves: true, isFirstStage: true });
     saveRunStorage();
   }
 
@@ -754,8 +746,13 @@
     run.board = generated.board;
     run.emptyCells = generated.emptyCells;
     run.finished = false;
+    run.boardBaseMoves = estimateBoardMoves(run.board, run.emptyCells, run.currentColorCount);
     if (options.resetMoves) {
-      run.remainingMoves = estimateBoardMoves(run.board, run.emptyCells, run.currentColorCount) + getStageMoveBuffer(run.config);
+      if (options.isFirstStage) {
+        run.remainingMoves = run.boardBaseMoves + getStageMoveBuffer(run.config);
+      } else {
+        run.remainingMoves = run.boardBaseMoves + Math.max(0, run.carriedMoves || 0);
+      }
     }
     renderGameUi();
     requestAnimationFrame(fitBoardToViewport);
@@ -818,7 +815,9 @@
         if (cellValue === EMPTY_CELL) {
           cell.classList.add('empty');
         } else {
-          cell.style.backgroundColor = getPaletteColor(cellValue);
+          const color = getPaletteColor(cellValue);
+          cell.style.setProperty('--cell-color', color);
+          cell.style.backgroundColor = color;
         }
         el.board.appendChild(cell);
       }
@@ -833,7 +832,9 @@
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'color-btn';
-      button.style.backgroundColor = getPaletteColor(colorIndex);
+      const color = getPaletteColor(colorIndex);
+      button.style.setProperty('--button-color', color);
+      button.style.backgroundColor = color;
       button.title = `색상 ${colorIndex + 1}`;
       const usable = available.has(colorIndex);
       button.classList.toggle('disabled-color', !usable);
@@ -943,20 +944,19 @@
     playSound('success');
 
     const next = getNextProgress(run);
-    const boardGrew = next.boardSize > run.currentBoardSize;
-    const addedMoves = run.config.stageClearMoveBonus + (boardGrew ? run.config.boardGrowMoveBonus : 0);
     showOverlay(
       '스테이지 클리어',
-      `다음 판으로 이동합니다.\nStage ${next.visibleStage} · ${next.boardSize}x${next.boardSize} · ${next.colorCount}색\n선택 횟수 +${addedMoves}`,
+      `다음 판으로 이동합니다.
+Stage ${next.visibleStage} · ${next.boardSize}x${next.boardSize} · ${next.colorCount}색`,
       '다음 판으로',
       () => {
         run.mainStage = next.mainStage;
         run.subStage = next.subStage;
         run.currentColorCount = next.colorCount;
         run.currentBoardSize = next.boardSize;
-        run.remainingMoves += addedMoves;
+        run.carriedMoves = Math.max(0, run.remainingMoves);
         saveRunStorage();
-        setupCurrentBoard();
+        setupCurrentBoard({ resetMoves: true, isFirstStage: false });
       }
     );
   }
@@ -1047,6 +1047,8 @@
       mainStage: run.mainStage,
       subStage: run.subStage,
       remainingMoves: run.remainingMoves,
+      carriedMoves: run.carriedMoves || 0,
+      boardBaseMoves: run.boardBaseMoves || 0,
       currentColorCount: run.currentColorCount,
       currentBoardSize: run.currentBoardSize,
       board: run.board.map((row) => [...row]),
@@ -1068,6 +1070,8 @@
       mainStage: clampInt(raw.mainStage, 1, 99999, 1),
       subStage: clampInt(raw.subStage, 1, config.subStagesPerStage, 1),
       remainingMoves: clampInt(raw.remainingMoves, 0, 999999, config.initialMoves),
+      carriedMoves: clampInt(raw.carriedMoves, 0, 999999, 0),
+      boardBaseMoves: clampInt(raw.boardBaseMoves, 0, 999999, 0),
       currentColorCount: clampInt(raw.currentColorCount, 2, currentColorMax, config.initialColorCount),
       currentBoardSize,
       board,
