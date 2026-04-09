@@ -1,4 +1,5 @@
 const STORAGE_KEY = 'color-sweeper-preset-store-v1';
+const RUN_STORAGE_KEY = 'color-sweeper-active-run-v1';
 const SOUND_PREF_KEY = 'color-sweeper-sound-enabled-v1';
 const EMPTY_CELL = -1;
 const EXPORT_VERSION = 1;
@@ -181,6 +182,7 @@ function init() {
   renderBuiltinPresets();
   renderCustomPresets();
   applyLastSelectedPresetOnBoot();
+  restoreActiveRunOnBoot();
   updateAllUi();
 }
 
@@ -320,16 +322,81 @@ function savePresetStorage() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
 }
 
+function saveRunStorage() {
+  try {
+    if (!appState.currentRun) {
+      localStorage.removeItem(RUN_STORAGE_KEY);
+      return;
+    }
+
+    const payload = {
+      version: EXPORT_VERSION,
+      run: serializeRun(appState.currentRun),
+    };
+    localStorage.setItem(RUN_STORAGE_KEY, JSON.stringify(payload));
+  } catch (error) {
+    console.warn('진행 중인 플레이 저장에 실패했습니다.', error);
+  }
+}
+
+function clearRunStorage() {
+  try {
+    localStorage.removeItem(RUN_STORAGE_KEY);
+  } catch (error) {
+    console.warn('진행 중인 플레이 저장 삭제에 실패했습니다.', error);
+  }
+}
+
 function applyLastSelectedPresetOnBoot() {
   let targetPreset = null;
   if (appState.lastSelectedPresetRef) {
     targetPreset = getPresetByRef(appState.lastSelectedPresetRef);
+  }
+  if (!targetPreset && appState.lastSelectedPresetRef?.kind === 'custom-temp-last-played' && appState.lastSelectedPresetRef?.configSnapshot) {
+    const config = sanitizeConfig(appState.lastSelectedPresetRef.configSnapshot);
+    appState.selectedPresetRef = {
+      id: 'unsaved-last-played',
+      kind: 'temp',
+      name: config.presetName || '마지막 플레이 설정',
+      tempModified: true,
+    };
+    appState.selectedConfig = config;
+    writeConfigToInputs(config);
+    return;
   }
   if (!targetPreset) {
     targetPreset = BUILTIN_PRESETS[0];
   }
   if (targetPreset) {
     selectPreset(targetPreset, false);
+  }
+}
+
+function restoreActiveRunOnBoot() {
+  try {
+    const raw = localStorage.getItem(RUN_STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    const run = deserializeRun(parsed?.run);
+    if (!run) {
+      clearRunStorage();
+      return;
+    }
+
+    appState.currentRun = run;
+    appState.selectedConfig = cloneConfig(run.config);
+    appState.selectedPresetRef = {
+      id: 'active-run',
+      kind: 'temp',
+      name: run.config.presetName || '진행 중인 플레이',
+      tempModified: true,
+    };
+    writeConfigToInputs(appState.selectedConfig);
+    showPlayScreen();
+    renderGameUi();
+  } catch (error) {
+    console.error('진행 중인 플레이 복원에 실패했습니다.', error);
+    clearRunStorage();
   }
 }
 
@@ -657,6 +724,14 @@ function getPresetByRef(ref) {
   if (ref.kind === 'builtin') {
     return BUILTIN_PRESETS.find((item) => item.id === ref.id) || null;
   }
+  if (ref.kind === 'custom-temp-last-played' && ref.configSnapshot) {
+    return {
+      id: ref.id || 'unsaved-last-played',
+      kind: 'temp',
+      name: ref.configSnapshot.presetName || '마지막 플레이 설정',
+      config: sanitizeConfig(ref.configSnapshot),
+    };
+  }
   return appState.customPresets.find((item) => item.id === ref.id) || null;
 }
 
@@ -821,6 +896,7 @@ function startGameFromSelectedConfig() {
 
   showPlayScreen();
   setupStageBoard();
+  saveRunStorage();
 }
 
 function showPlayScreen() {
@@ -828,17 +904,20 @@ function showPlayScreen() {
   el.playScreen.classList.add('active');
 }
 
-function showSetupScreen() {
+function showSetupScreen(clearRun = true) {
   el.playScreen.classList.remove('active');
   el.setupScreen.classList.add('active');
   appState.currentRun = null;
+  if (clearRun) {
+    clearRunStorage();
+  }
   updateAllUi();
 }
 
 function onGiveUpClicked() {
   const ok = window.confirm('현재 플레이를 포기하고 초기 화면으로 돌아갈까요? 진행 중인 플레이 정보는 버려집니다.');
   if (!ok) return;
-  showSetupScreen();
+  showSetupScreen(true);
 }
 
 function setupStageBoard() {
@@ -851,6 +930,7 @@ function setupStageBoard() {
   run.finished = false;
 
   renderGameUi();
+  saveRunStorage();
 }
 
 function generateBoard(size, colorCount) {
@@ -964,6 +1044,7 @@ function selectColor(colorIndex) {
 
   playSound('colorPick');
   run.remainingMoves -= 1;
+  saveRunStorage();
   renderGameUi();
 
   if (isBoardCleared(run.board)) {
@@ -1044,7 +1125,7 @@ function onStageCleared() {
       `모든 스테이지를 클리어했습니다. '${run.config.presetName}' 플레이가 종료되었습니다. 화면을 눌러 초기 화면으로 돌아갑니다.`,
       '초기 화면으로',
       () => {
-        showSetupScreen();
+        showSetupScreen(true);
       }
     );
     return;
@@ -1065,6 +1146,7 @@ function onStageCleared() {
       run.currentColorCount = nextColorCount;
       run.currentBoardSize = nextBoardSize;
       run.remainingMoves = nextMoves;
+      saveRunStorage();
       setupStageBoard();
     }
   );
@@ -1080,7 +1162,7 @@ function onStageFailed() {
     `선택 횟수를 모두 사용했습니다. '${run.config.presetName}' 플레이를 종료하고 초기 화면으로 돌아갑니다.`,
     '초기 화면으로',
     () => {
-      showSetupScreen();
+      showSetupScreen(true);
     }
   );
 }
@@ -1105,6 +1187,45 @@ function showOverlay(title, message, buttonText, handler) {
 
 function hideOverlay() {
   el.overlay.classList.add('hidden');
+}
+
+
+function serializeRun(run) {
+  return {
+    config: cloneConfig(run.config),
+    stageIndex: run.stageIndex,
+    remainingMoves: run.remainingMoves,
+    currentColorCount: run.currentColorCount,
+    currentBoardSize: run.currentBoardSize,
+    board: run.board.map((row) => [...row]),
+    emptyCells: Array.from(run.emptyCells),
+    finished: Boolean(run.finished),
+  };
+}
+
+function deserializeRun(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const config = sanitizeConfig(raw.config || {});
+  const stageIndex = clampInt(raw.stageIndex, 1, config.stagesPerPlay, 1);
+  const currentColorCount = clampInt(raw.currentColorCount, 2, config.maxColorCount, config.initialColorCount);
+  const currentBoardSize = clampInt(raw.currentBoardSize, 3, config.maxBoardSize, config.initialBoardSize);
+  const remainingMoves = clampInt(raw.remainingMoves, 0, 999, config.initialMoves);
+  const board = Array.isArray(raw.board) ? raw.board.map((row) => Array.isArray(row) ? row.map((value) => Number(value)) : []) : [];
+  if (board.length !== currentBoardSize || board.some((row) => row.length !== currentBoardSize)) return null;
+
+  const emptyCellsArray = Array.isArray(raw.emptyCells) ? raw.emptyCells : [];
+  const emptyCells = new Set(emptyCellsArray.map((item) => String(item)));
+
+  return {
+    config,
+    stageIndex,
+    remainingMoves,
+    currentColorCount,
+    currentBoardSize,
+    board,
+    emptyCells,
+    finished: Boolean(raw.finished),
+  };
 }
 
 function floodFromSeed(board, startRow, startCol, colorIndex) {
