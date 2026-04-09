@@ -35,7 +35,7 @@ window.COLOR_SWEEPER_CONFIG = {
         boardIncreaseAmount: 1,
         maxColorCount: null,
         maxBoardSize: null,
-        extraMoveBuffer: 10,
+        extraMoveBuffer: 5,
       },
     },
     {
@@ -51,7 +51,7 @@ window.COLOR_SWEEPER_CONFIG = {
         boardIncreaseAmount: 1,
         maxColorCount: null,
         maxBoardSize: null,
-        extraMoveBuffer: 9,
+        extraMoveBuffer: 5,
       },
     },
     {
@@ -67,7 +67,7 @@ window.COLOR_SWEEPER_CONFIG = {
         boardIncreaseAmount: 1,
         maxColorCount: null,
         maxBoardSize: null,
-        extraMoveBuffer: 8,
+        extraMoveBuffer: 3,
       },
     },
     {
@@ -83,7 +83,7 @@ window.COLOR_SWEEPER_CONFIG = {
         boardIncreaseAmount: 1,
         maxColorCount: null,
         maxBoardSize: null,
-        extraMoveBuffer: 7,
+        extraMoveBuffer: 3,
       },
     },
     {
@@ -99,7 +99,7 @@ window.COLOR_SWEEPER_CONFIG = {
         boardIncreaseAmount: 1,
         maxColorCount: null,
         maxBoardSize: null,
-        extraMoveBuffer: 6,
+        extraMoveBuffer: 2,
       },
     },
   ],
