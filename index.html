@@ -106,14 +106,14 @@
                     <input id="max-board-size-input" type="number" min="3" max="30" placeholder="제한 없음" />
                   </label>
                   <label>
-                    <span>시작 선택 횟수</span>
-                    <input id="initial-moves-input" type="number" min="1" max="999" />
+                    <span>판당 여유 선택 횟수</span>
+                    <input id="initial-moves-input" type="number" min="0" max="999" />
                   </label>
-                  <label>
+                  <label class="hidden">
                     <span>판 클리어 시 추가 횟수</span>
                     <input id="stage-clear-move-bonus-input" type="number" min="0" max="999" />
                   </label>
-                  <label>
+                  <label class="hidden">
                     <span>보드 확장 시 추가 보너스</span>
                     <input id="board-grow-move-bonus-input" type="number" min="0" max="999" />
                   </label>
@@ -135,9 +135,8 @@
 
     <section id="play-screen" class="screen">
       <div class="play-shell">
-        <div class="hud-left hud-card compact-hud">
-          <button id="give-up-btn" class="danger-btn" type="button">게임 포기</button>
-          <div id="stage-indicator" class="stage-pill">Stage 1</div>
+        <div class="hud-left">
+          <button id="give-up-btn" class="danger-btn give-up-floating-btn" type="button">게임 포기</button>
         </div>
 
         <div class="hud-right">

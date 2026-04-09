@@ -53,7 +53,6 @@
     startGameBtn: document.getElementById('start-game-btn'),
     toggleSoundBtn: document.getElementById('toggle-sound-btn'),
     giveUpBtn: document.getElementById('give-up-btn'),
-    stageIndicator: document.getElementById('stage-indicator'),
     playSoundToggleBtn: document.getElementById('play-sound-toggle-btn'),
     boardViewport: document.getElementById('board-viewport'),
     boardCanvas: document.getElementById('board-canvas'),
@@ -547,8 +546,8 @@
       maxColorCount,
       maxBoardSize,
       initialMoves: clampInt(raw.initialMoves, 1, 999, 10),
-      stageClearMoveBonus: clampInt(raw.stageClearMoveBonus, 0, 999, 2),
-      boardGrowMoveBonus: clampInt(raw.boardGrowMoveBonus, 0, 999, 1),
+      stageClearMoveBonus: clampInt(raw.stageClearMoveBonus, 0, 999, 0),
+      boardGrowMoveBonus: clampInt(raw.boardGrowMoveBonus, 0, 999, 0),
     };
   }
 
@@ -756,7 +755,7 @@
     run.emptyCells = generated.emptyCells;
     run.finished = false;
     if (options.resetMoves) {
-      run.remainingMoves = estimateBoardMoves(run.board, run.emptyCells, run.currentColorCount) + run.config.initialMoves;
+      run.remainingMoves = estimateBoardMoves(run.board, run.emptyCells, run.currentColorCount) + getStageMoveBuffer(run.config);
     }
     renderGameUi();
     requestAnimationFrame(fitBoardToViewport);
@@ -800,7 +799,6 @@
     const run = appState.currentRun;
     if (!run) return;
     const visibleStage = getVisibleStageNumber(run);
-    el.stageIndicator.textContent = `Stage ${visibleStage}`;
     el.boardInfo.textContent = `Stage ${visibleStage} · ${run.currentBoardSize}x${run.currentBoardSize} · ${run.currentColorCount}색 · 선택 횟수 ${run.remainingMoves}`;
     el.boardStatus.textContent = `${run.config.presetName} · 드래그 이동 / 두 손가락 확대·축소`;
     renderBoard();
@@ -993,6 +991,10 @@
 
   function getVisibleStageNumber(run) {
     return ((run.mainStage - 1) * run.config.subStagesPerStage) + run.subStage;
+  }
+
+  function getStageMoveBuffer(config) {
+    return clampInt(config.initialMoves, 0, 999999, 0);
   }
 
   function computeStageColorCount(config, mainStage) {
