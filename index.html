@@ -13,16 +13,16 @@
         <header class="hero-card card">
           <div>
             <h1>Color Sweeper</h1>
-            <p class="subtext">난이도 프리셋을 고르거나 세부 설정을 조정한 뒤 게임을 시작하세요.</p>
+            <p class="subtext">프리셋을 고르거나 세부 설정을 조정한 뒤 게임을 시작하세요.</p>
           </div>
-          <button id="toggle-sound-btn" class="icon-btn" type="button" aria-label="사운드 켜기/끄기">🔊</button>
+          <button id="toggle-sound-btn" class="icon-btn" type="button" aria-label="사운드 켜기 또는 끄기">🔊</button>
         </header>
 
         <main class="setup-layout">
           <section class="left-column">
             <div class="card">
               <div class="section-header">
-                <h2>기본 난이도 프리셋</h2>
+                <h2>기본 프리셋</h2>
                 <span id="selected-preset-badge" class="badge subtle">선택 없음</span>
               </div>
               <div id="builtin-preset-list" class="preset-grid"></div>
@@ -45,8 +45,8 @@
                 <h2>외부용 저장 데이터</h2>
                 <button id="close-clipboard-btn" class="text-btn" type="button">닫기</button>
               </div>
-              <p class="subtext small">클립보드 권한이 제한될 경우 아래 텍스트를 직접 복사하거나 붙여넣어 사용할 수 있습니다.</p>
-              <textarea id="clipboard-textarea" rows="8" spellcheck="false" placeholder="저장 데이터가 여기에 표시되거나, 붙여넣기 후 불러옵니다."></textarea>
+              <p class="subtext small">클립보드가 막혀 있으면 아래 텍스트를 직접 복사하거나 붙여넣어 사용하세요.</p>
+              <textarea id="clipboard-textarea" rows="8" spellcheck="false" placeholder="저장 데이터가 표시되거나, 붙여넣기 후 불러옵니다."></textarea>
               <div class="clipboard-actions">
                 <button id="copy-textarea-btn" class="secondary-btn" type="button">텍스트 복사</button>
                 <button id="apply-textarea-btn" class="primary-btn" type="button">텍스트 적용</button>
@@ -61,78 +61,63 @@
                 <button id="toggle-details-btn" class="secondary-btn" type="button">세부 설정 펼치기</button>
               </div>
 
-              <div id="config-summary" class="config-summary muted">
-                프리셋을 선택하면 요약이 표시됩니다.
-              </div>
+              <div id="config-summary" class="config-summary muted">프리셋을 선택하면 요약이 표시됩니다.</div>
 
               <div id="details-panel" class="details-panel hidden">
                 <div class="form-grid">
                   <label>
                     <span>프리셋 이름</span>
-                    <input id="preset-name-input" type="text" maxlength="40" placeholder="예: 느긋한 테스트용" />
+                    <input id="preset-name-input" type="text" maxlength="40" placeholder="예: 느긋한 연습용" />
                   </label>
-
                   <label>
-                    <span>스테이지 수</span>
-                    <input id="stages-per-play-input" type="number" min="1" max="99" />
+                    <span>스테이지 당 플레이 횟수</span>
+                    <input id="sub-stages-per-stage-input" type="number" min="1" max="99" />
                   </label>
-
                   <label>
                     <span>초기 색상 수</span>
                     <input id="initial-color-count-input" type="number" min="2" max="20" />
                   </label>
-
                   <label>
                     <span>초기 가로/세로 칸 수</span>
-                    <input id="initial-board-size-input" type="number" min="3" max="20" />
+                    <input id="initial-board-size-input" type="number" min="3" max="30" />
                   </label>
-
                   <label>
-                    <span>색상 증가 포인트 (n스테이지 클리어마다)</span>
-                    <input id="color-increase-every-input" type="number" min="1" max="20" />
+                    <span>색상 증가 포인트 (n 메인 스테이지 클리어마다)</span>
+                    <input id="color-increase-every-input" type="number" min="1" max="99" />
                   </label>
-
                   <label>
                     <span>색상 증가 개수</span>
                     <input id="color-increase-amount-input" type="number" min="0" max="10" />
                   </label>
-
                   <label>
-                    <span>칸 수 증가 포인트 (n스테이지 클리어마다)</span>
-                    <input id="board-increase-every-input" type="number" min="1" max="20" />
+                    <span>칸 수 증가 포인트 (n 메인 스테이지 클리어마다)</span>
+                    <input id="board-increase-every-input" type="number" min="1" max="99" />
                   </label>
-
                   <label>
                     <span>칸 수 증가 개수</span>
-                    <input id="board-increase-amount-input" type="number" min="0" max="5" />
+                    <input id="board-increase-amount-input" type="number" min="0" max="10" />
                   </label>
-
                   <label>
-                    <span>최대 색상 수</span>
-                    <input id="max-color-count-input" type="number" min="2" max="20" />
+                    <span>최대 색상 수 (비워두면 제한 없음)</span>
+                    <input id="max-color-count-input" type="number" min="2" max="20" placeholder="제한 없음" />
                   </label>
-
                   <label>
-                    <span>최대 가로/세로 칸 수</span>
-                    <input id="max-board-size-input" type="number" min="3" max="25" />
+                    <span>최대 가로/세로 칸 수 (비워두면 제한 없음)</span>
+                    <input id="max-board-size-input" type="number" min="3" max="30" placeholder="제한 없음" />
                   </label>
-
                   <label>
                     <span>시작 선택 횟수</span>
-                    <input id="initial-moves-input" type="number" min="1" max="99" />
+                    <input id="initial-moves-input" type="number" min="1" max="999" />
                   </label>
-
                   <label>
-                    <span>스테이지 클리어 시 추가 횟수</span>
-                    <input id="stage-clear-move-bonus-input" type="number" min="0" max="50" />
+                    <span>판 클리어 시 추가 횟수</span>
+                    <input id="stage-clear-move-bonus-input" type="number" min="0" max="999" />
                   </label>
-
                   <label>
                     <span>보드 확장 시 추가 보너스</span>
-                    <input id="board-grow-move-bonus-input" type="number" min="0" max="50" />
+                    <input id="board-grow-move-bonus-input" type="number" min="0" max="999" />
                   </label>
                 </div>
-
                 <div class="details-actions">
                   <button id="save-preset-btn" class="secondary-btn" type="button">프리셋 저장</button>
                   <button id="save-as-new-btn" class="secondary-btn" type="button">새 프리셋으로 저장</button>
@@ -150,33 +135,37 @@
 
     <section id="play-screen" class="screen">
       <div class="play-shell">
-        <header class="play-topbar card">
-          <div class="topbar-left">
-            <button id="give-up-btn" class="danger-btn" type="button">게임 포기</button>
-            <div id="move-counter" class="move-counter">선택 횟수: 0</div>
+        <div class="hud-left hud-card">
+          <button id="give-up-btn" class="danger-btn" type="button">게임 포기</button>
+          <div class="hud-stage-row">
+            <div id="stage-indicator" class="stage-pill">Stage 1</div>
+            <div id="substage-indicator" class="substage-text">1-1</div>
           </div>
-          <div class="topbar-right">
-            <div id="stage-indicator" class="badge">Stage 1</div>
-            <button id="play-sound-toggle-btn" class="icon-btn" type="button" aria-label="사운드 켜기/끄기">🔊</button>
-          </div>
-        </header>
+          <div id="move-counter" class="move-counter">선택 횟수: 0</div>
+        </div>
+
+        <div class="hud-right">
+          <button id="play-sound-toggle-btn" class="icon-btn floating-sound-btn" type="button" aria-label="사운드 켜기 또는 끄기">🔊</button>
+        </div>
 
         <main class="play-main">
-          <section class="board-section card">
-            <div class="board-meta">
-              <div id="board-info" class="subtext">5x5 · 3색</div>
-              <div id="board-status" class="subtext">빈 영역을 넓혀서 보드를 모두 비우세요.</div>
-            </div>
-            <div id="board-wrapper">
-              <div id="board"></div>
+          <section id="board-viewport" class="board-viewport">
+            <div id="board-canvas" class="board-canvas">
+              <div id="board" class="board-grid"></div>
             </div>
           </section>
-
-          <footer class="color-toolbar-shell card">
-            <div class="toolbar-title">색상 선택</div>
-            <div id="color-toolbar" class="color-toolbar"></div>
-          </footer>
         </main>
+
+        <footer class="toolbar-sheet">
+          <div class="toolbar-header">
+            <div>
+              <div class="toolbar-title">색상 선택</div>
+              <div id="board-info" class="toolbar-subtitle">5x5 · 3색</div>
+            </div>
+            <div id="board-status" class="toolbar-subtitle right">빈칸 한 칸에서 시작합니다.</div>
+          </div>
+          <div id="color-toolbar" class="color-toolbar"></div>
+        </footer>
       </div>
     </section>
 
@@ -189,6 +178,7 @@
     </div>
   </div>
 
+  <script src="./config.js"></script>
   <script src="./script.js"></script>
 </body>
 </html>

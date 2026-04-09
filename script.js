@@ -1,1279 +1,1106 @@
-const STORAGE_KEY = 'color-sweeper-preset-store-v1';
-const RUN_STORAGE_KEY = 'color-sweeper-active-run-v1';
-const SOUND_PREF_KEY = 'color-sweeper-sound-enabled-v1';
-const EMPTY_CELL = -1;
-const EXPORT_VERSION = 1;
+(() => {
+  const LOCAL_PRESET_KEY = 'colorSweeper.presetData.v2';
+  const LOCAL_RUN_KEY = 'colorSweeper.activeRun.v2';
+  const SOUND_PREF_KEY = 'colorSweeper.soundEnabled.v2';
+  const EXPORT_VERSION = 2;
+  const EMPTY_CELL = -1;
+  const MAX_FALLBACK_BOARD_SIZE = 30;
 
-const BUILTIN_PRESETS = [
-  {
-    id: 'builtin-easy',
+  const rawConfig = window.COLOR_SWEEPER_CONFIG || {};
+  const PALETTE = Array.isArray(rawConfig.distinguishableColors) && rawConfig.distinguishableColors.length
+    ? rawConfig.distinguishableColors.slice()
+    : ['#FF0000', '#00C853', '#2962FF', '#AA00FF', '#FF7F00', '#FFFF00'];
+
+  const BUILTIN_PRESETS = (Array.isArray(rawConfig.builtinPresets) ? rawConfig.builtinPresets : []).map((preset) => ({
+    id: String(preset.id),
     kind: 'builtin',
-    name: '쉬움',
-    config: {
-      stagesPerPlay: 7,
-      initialColorCount: 3,
-      initialBoardSize: 5,
-      colorIncreaseEvery: 1,
-      colorIncreaseAmount: 1,
-      boardIncreaseEvery: 3,
-      boardIncreaseAmount: 1,
-      maxColorCount: 7,
-      maxBoardSize: 8,
-      initialMoves: 10,
-      stageClearMoveBonus: 3,
-      boardGrowMoveBonus: 1,
-    },
-  },
-  {
-    id: 'builtin-normal-ish',
-    kind: 'builtin',
-    name: '그럭저럭',
-    config: {
-      stagesPerPlay: 6,
-      initialColorCount: 4,
-      initialBoardSize: 5,
-      colorIncreaseEvery: 1,
-      colorIncreaseAmount: 1,
-      boardIncreaseEvery: 3,
-      boardIncreaseAmount: 1,
-      maxColorCount: 8,
-      maxBoardSize: 9,
-      initialMoves: 10,
-      stageClearMoveBonus: 3,
-      boardGrowMoveBonus: 1,
-    },
-  },
-  {
-    id: 'builtin-hard',
-    kind: 'builtin',
-    name: '어려움',
-    config: {
-      stagesPerPlay: 5,
-      initialColorCount: 5,
-      initialBoardSize: 7,
-      colorIncreaseEvery: 1,
-      colorIncreaseAmount: 1,
-      boardIncreaseEvery: 3,
-      boardIncreaseAmount: 1,
-      maxColorCount: 9,
-      maxBoardSize: 10,
-      initialMoves: 12,
-      stageClearMoveBonus: 4,
-      boardGrowMoveBonus: 1,
-    },
-  },
-  {
-    id: 'builtin-very-hard',
-    kind: 'builtin',
-    name: '많이 어려움',
-    config: {
-      stagesPerPlay: 4,
-      initialColorCount: 6,
-      initialBoardSize: 8,
-      colorIncreaseEvery: 1,
-      colorIncreaseAmount: 1,
-      boardIncreaseEvery: 3,
-      boardIncreaseAmount: 1,
-      maxColorCount: 10,
-      maxBoardSize: 11,
-      initialMoves: 13,
-      stageClearMoveBonus: 4,
-      boardGrowMoveBonus: 1,
-    },
-  },
-  {
-    id: 'builtin-brutal',
-    kind: 'builtin',
-    name: '정말 많이 어려움',
-    config: {
-      stagesPerPlay: 3,
-      initialColorCount: 7,
-      initialBoardSize: 10,
-      colorIncreaseEvery: 1,
-      colorIncreaseAmount: 1,
-      boardIncreaseEvery: 3,
-      boardIncreaseAmount: 1,
-      maxColorCount: 11,
-      maxBoardSize: 12,
-      initialMoves: 14,
-      stageClearMoveBonus: 5,
-      boardGrowMoveBonus: 2,
-    },
-  },
-];
+    name: String(preset.name),
+    config: sanitizeConfig({ ...preset.config, presetName: preset.name }),
+  }));
 
-const PALETTE = [
-  '#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899',
-  '#06b6d4', '#84cc16', '#f97316', '#14b8a6', '#a855f7', '#22c55e',
-  '#e11d48', '#0ea5e9', '#d97706', '#65a30d', '#7c3aed', '#0f766e',
-];
-
-const el = {
-  setupScreen: document.getElementById('setup-screen'),
-  playScreen: document.getElementById('play-screen'),
-  builtinPresetList: document.getElementById('builtin-preset-list'),
-  customPresetList: document.getElementById('custom-preset-list'),
-  customPresetEmpty: document.getElementById('custom-preset-empty'),
-  selectedPresetBadge: document.getElementById('selected-preset-badge'),
-  configSummary: document.getElementById('config-summary'),
-  toggleDetailsBtn: document.getElementById('toggle-details-btn'),
-  detailsPanel: document.getElementById('details-panel'),
-  startGameBtn: document.getElementById('start-game-btn'),
-  exportBtn: document.getElementById('export-btn'),
-  importBtn: document.getElementById('import-btn'),
-  clipboardCard: document.getElementById('clipboard-card'),
-  clipboardTextarea: document.getElementById('clipboard-textarea'),
-  closeClipboardBtn: document.getElementById('close-clipboard-btn'),
-  copyTextareaBtn: document.getElementById('copy-textarea-btn'),
-  applyTextareaBtn: document.getElementById('apply-textarea-btn'),
-  savePresetBtn: document.getElementById('save-preset-btn'),
-  saveAsNewBtn: document.getElementById('save-as-new-btn'),
-  presetNameInput: document.getElementById('preset-name-input'),
-  stagesPerPlayInput: document.getElementById('stages-per-play-input'),
-  initialColorCountInput: document.getElementById('initial-color-count-input'),
-  initialBoardSizeInput: document.getElementById('initial-board-size-input'),
-  colorIncreaseEveryInput: document.getElementById('color-increase-every-input'),
-  colorIncreaseAmountInput: document.getElementById('color-increase-amount-input'),
-  boardIncreaseEveryInput: document.getElementById('board-increase-every-input'),
-  boardIncreaseAmountInput: document.getElementById('board-increase-amount-input'),
-  maxColorCountInput: document.getElementById('max-color-count-input'),
-  maxBoardSizeInput: document.getElementById('max-board-size-input'),
-  initialMovesInput: document.getElementById('initial-moves-input'),
-  stageClearMoveBonusInput: document.getElementById('stage-clear-move-bonus-input'),
-  boardGrowMoveBonusInput: document.getElementById('board-grow-move-bonus-input'),
-  giveUpBtn: document.getElementById('give-up-btn'),
-  moveCounter: document.getElementById('move-counter'),
-  stageIndicator: document.getElementById('stage-indicator'),
-  boardInfo: document.getElementById('board-info'),
-  boardStatus: document.getElementById('board-status'),
-  board: document.getElementById('board'),
-  colorToolbar: document.getElementById('color-toolbar'),
-  overlay: document.getElementById('overlay'),
-  overlayTitle: document.getElementById('overlay-title'),
-  overlayMessage: document.getElementById('overlay-message'),
-  overlayActionBtn: document.getElementById('overlay-action-btn'),
-  toggleSoundBtn: document.getElementById('toggle-sound-btn'),
-  playSoundToggleBtn: document.getElementById('play-sound-toggle-btn'),
-};
-
-const appState = {
-  customPresets: [],
-  lastSelectedPresetRef: null,
-  selectedPresetRef: null,
-  selectedConfig: null,
-  detailsOpen: false,
-  soundEnabled: true,
-  currentRun: null,
-  overlayHandler: null,
-};
-
-const audioState = {
-  start: null,
-  colorPick: null,
-  success: null,
-  fail: null,
-};
-
-function init() {
-  loadSoundPreference();
-  loadStoredPresetData();
-  setupAudio();
-  bindEvents();
-  renderBuiltinPresets();
-  renderCustomPresets();
-  applyLastSelectedPresetOnBoot();
-  restoreActiveRunOnBoot();
-  updateAllUi();
-}
-
-function setupAudio() {
-  audioState.start = createAudio('./assets/audio/ui_click.mp3');
-  audioState.colorPick = createAudio('./assets/audio/color_pick.mp3');
-  audioState.success = createAudio('./assets/audio/success.mp3');
-  audioState.fail = createAudio('./assets/audio/fail.mp3');
-}
-
-function createAudio(src) {
-  const audio = new Audio(src);
-  audio.preload = 'auto';
-  return audio;
-}
-
-function bindEvents() {
-  el.toggleDetailsBtn.addEventListener('click', () => {
-    appState.detailsOpen = !appState.detailsOpen;
-    updateDetailsVisibility();
-  });
-
-  const inputs = [
-    el.presetNameInput,
-    el.stagesPerPlayInput,
-    el.initialColorCountInput,
-    el.initialBoardSizeInput,
-    el.colorIncreaseEveryInput,
-    el.colorIncreaseAmountInput,
-    el.boardIncreaseEveryInput,
-    el.boardIncreaseAmountInput,
-    el.maxColorCountInput,
-    el.maxBoardSizeInput,
-    el.initialMovesInput,
-    el.stageClearMoveBonusInput,
-    el.boardGrowMoveBonusInput,
-  ];
-
-  inputs.forEach((input) => {
-    input.addEventListener('input', onConfigInputChanged);
-  });
-
-  el.savePresetBtn.addEventListener('click', onSavePresetClicked);
-  el.saveAsNewBtn.addEventListener('click', onSaveAsNewClicked);
-  el.startGameBtn.addEventListener('click', startGameFromSelectedConfig);
-  el.exportBtn.addEventListener('click', onExportDataClicked);
-  el.importBtn.addEventListener('click', onImportDataClicked);
-  el.closeClipboardBtn.addEventListener('click', () => {
-    el.clipboardCard.classList.add('hidden');
-  });
-  el.copyTextareaBtn.addEventListener('click', async () => {
-    const text = el.clipboardTextarea.value.trim();
-    if (!text) {
-      window.alert('복사할 데이터가 없습니다.');
-      return;
-    }
-    await copyTextToClipboard(text, true);
-  });
-  el.applyTextareaBtn.addEventListener('click', () => {
-    importPresetDataFromText(el.clipboardTextarea.value);
-  });
-  el.giveUpBtn.addEventListener('click', onGiveUpClicked);
-  el.overlayActionBtn.addEventListener('click', () => {
-    hideOverlay();
-    if (typeof appState.overlayHandler === 'function') {
-      const handler = appState.overlayHandler;
-      appState.overlayHandler = null;
-      handler();
-    }
-  });
-  el.toggleSoundBtn.addEventListener('click', toggleSound);
-  el.playSoundToggleBtn.addEventListener('click', toggleSound);
-}
-
-function onConfigInputChanged() {
-  const config = readConfigFromInputs();
-  const sanitized = sanitizeConfig(config);
-  appState.selectedConfig = sanitized;
-  if (appState.selectedPresetRef) {
-    appState.selectedPresetRef = { ...appState.selectedPresetRef, tempModified: true };
-  } else {
-    appState.selectedPresetRef = {
-      id: `temp-${Date.now()}`,
-      kind: 'temp',
-      name: sanitized.presetName || '임시 설정',
-      tempModified: true,
-    };
-  }
-  updateSummary();
-  updateStartButtonState();
-  updateSelectedBadges();
-}
-
-function loadStoredPresetData() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      appState.customPresets = [];
-      appState.lastSelectedPresetRef = null;
-      return;
-    }
-    const parsed = JSON.parse(raw);
-    appState.customPresets = Array.isArray(parsed.customPresets)
-      ? parsed.customPresets.map(normalizeCustomPreset).filter(Boolean)
-      : [];
-    appState.lastSelectedPresetRef = parsed.lastSelectedPresetRef || null;
-  } catch (error) {
-    console.error('저장된 프리셋 데이터를 불러오지 못했습니다.', error);
-    appState.customPresets = [];
-    appState.lastSelectedPresetRef = null;
-  }
-}
-
-function loadSoundPreference() {
-  try {
-    const stored = localStorage.getItem(SOUND_PREF_KEY);
-    appState.soundEnabled = stored === null ? true : stored === '1';
-  } catch (error) {
-    appState.soundEnabled = true;
-  }
-}
-
-function saveSoundPreference() {
-  try {
-    localStorage.setItem(SOUND_PREF_KEY, appState.soundEnabled ? '1' : '0');
-  } catch (error) {
-    console.warn('사운드 설정 저장에 실패했습니다.', error);
-  }
-}
-
-function savePresetStorage() {
-  const payload = {
-    version: EXPORT_VERSION,
-    customPresets: appState.customPresets,
-    lastSelectedPresetRef: appState.lastSelectedPresetRef,
+  const el = {
+    setupScreen: document.getElementById('setup-screen'),
+    playScreen: document.getElementById('play-screen'),
+    builtinPresetList: document.getElementById('builtin-preset-list'),
+    selectedPresetBadge: document.getElementById('selected-preset-badge'),
+    customPresetEmpty: document.getElementById('custom-preset-empty'),
+    customPresetList: document.getElementById('custom-preset-list'),
+    exportBtn: document.getElementById('export-btn'),
+    importBtn: document.getElementById('import-btn'),
+    clipboardCard: document.getElementById('clipboard-card'),
+    clipboardTextarea: document.getElementById('clipboard-textarea'),
+    closeClipboardBtn: document.getElementById('close-clipboard-btn'),
+    copyTextareaBtn: document.getElementById('copy-textarea-btn'),
+    applyTextareaBtn: document.getElementById('apply-textarea-btn'),
+    toggleDetailsBtn: document.getElementById('toggle-details-btn'),
+    detailsPanel: document.getElementById('details-panel'),
+    configSummary: document.getElementById('config-summary'),
+    presetNameInput: document.getElementById('preset-name-input'),
+    subStagesPerStageInput: document.getElementById('sub-stages-per-stage-input'),
+    initialColorCountInput: document.getElementById('initial-color-count-input'),
+    initialBoardSizeInput: document.getElementById('initial-board-size-input'),
+    colorIncreaseEveryInput: document.getElementById('color-increase-every-input'),
+    colorIncreaseAmountInput: document.getElementById('color-increase-amount-input'),
+    boardIncreaseEveryInput: document.getElementById('board-increase-every-input'),
+    boardIncreaseAmountInput: document.getElementById('board-increase-amount-input'),
+    maxColorCountInput: document.getElementById('max-color-count-input'),
+    maxBoardSizeInput: document.getElementById('max-board-size-input'),
+    initialMovesInput: document.getElementById('initial-moves-input'),
+    stageClearMoveBonusInput: document.getElementById('stage-clear-move-bonus-input'),
+    boardGrowMoveBonusInput: document.getElementById('board-grow-move-bonus-input'),
+    savePresetBtn: document.getElementById('save-preset-btn'),
+    saveAsNewBtn: document.getElementById('save-as-new-btn'),
+    startGameBtn: document.getElementById('start-game-btn'),
+    toggleSoundBtn: document.getElementById('toggle-sound-btn'),
+    giveUpBtn: document.getElementById('give-up-btn'),
+    moveCounter: document.getElementById('move-counter'),
+    stageIndicator: document.getElementById('stage-indicator'),
+    substageIndicator: document.getElementById('substage-indicator'),
+    playSoundToggleBtn: document.getElementById('play-sound-toggle-btn'),
+    boardViewport: document.getElementById('board-viewport'),
+    boardCanvas: document.getElementById('board-canvas'),
+    board: document.getElementById('board'),
+    boardInfo: document.getElementById('board-info'),
+    boardStatus: document.getElementById('board-status'),
+    colorToolbar: document.getElementById('color-toolbar'),
+    overlay: document.getElementById('overlay'),
+    overlayTitle: document.getElementById('overlay-title'),
+    overlayMessage: document.getElementById('overlay-message'),
+    overlayActionBtn: document.getElementById('overlay-action-btn'),
   };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-}
 
-function saveRunStorage() {
-  try {
-    if (!appState.currentRun) {
-      localStorage.removeItem(RUN_STORAGE_KEY);
-      return;
+  const appState = {
+    customPresets: [],
+    selectedPresetRef: null,
+    selectedConfig: null,
+    lastSelectedPresetRef: null,
+    detailsOpen: false,
+    currentRun: null,
+    overlayHandler: null,
+    soundEnabled: true,
+    boardView: { scale: 1, x: 0, y: 0 },
+    gesture: null,
+  };
+
+  const audioMap = {
+    start: createAudio('./assets/audio/ui_click.mp3'),
+    colorPick: createAudio('./assets/audio/color_pick.mp3'),
+    success: createAudio('./assets/audio/success.mp3'),
+    fail: createAudio('./assets/audio/fail.mp3'),
+  };
+
+  init();
+
+  function init() {
+    loadPresetStorage();
+    loadSoundPreference();
+    renderBuiltinPresets();
+    renderCustomPresets();
+    bindEvents();
+    const restoredRun = restoreActiveRunOnBoot();
+    if (!restoredRun) {
+      applyLastSelectedPresetOnBoot();
+      updateAllUi();
     }
-
-    const payload = {
-      version: EXPORT_VERSION,
-      run: serializeRun(appState.currentRun),
-    };
-    localStorage.setItem(RUN_STORAGE_KEY, JSON.stringify(payload));
-  } catch (error) {
-    console.warn('진행 중인 플레이 저장에 실패했습니다.', error);
+    window.addEventListener('resize', () => {
+      if (appState.currentRun && el.playScreen.classList.contains('active')) {
+        requestAnimationFrame(fitBoardToViewport);
+      }
+    });
   }
-}
 
-function clearRunStorage() {
-  try {
-    localStorage.removeItem(RUN_STORAGE_KEY);
-  } catch (error) {
-    console.warn('진행 중인 플레이 저장 삭제에 실패했습니다.', error);
-  }
-}
+  function bindEvents() {
+    const configInputs = [
+      el.presetNameInput,
+      el.subStagesPerStageInput,
+      el.initialColorCountInput,
+      el.initialBoardSizeInput,
+      el.colorIncreaseEveryInput,
+      el.colorIncreaseAmountInput,
+      el.boardIncreaseEveryInput,
+      el.boardIncreaseAmountInput,
+      el.maxColorCountInput,
+      el.maxBoardSizeInput,
+      el.initialMovesInput,
+      el.stageClearMoveBonusInput,
+      el.boardGrowMoveBonusInput,
+    ];
+    configInputs.forEach((node) => node.addEventListener('input', onConfigInputChanged));
 
-function applyLastSelectedPresetOnBoot() {
-  let targetPreset = null;
-  if (appState.lastSelectedPresetRef) {
-    targetPreset = getPresetByRef(appState.lastSelectedPresetRef);
-  }
-  if (!targetPreset && appState.lastSelectedPresetRef?.kind === 'custom-temp-last-played' && appState.lastSelectedPresetRef?.configSnapshot) {
-    const config = sanitizeConfig(appState.lastSelectedPresetRef.configSnapshot);
-    appState.selectedPresetRef = {
-      id: 'unsaved-last-played',
-      kind: 'temp',
-      name: config.presetName || '마지막 플레이 설정',
-      tempModified: true,
-    };
-    appState.selectedConfig = config;
-    writeConfigToInputs(config);
-    return;
-  }
-  if (!targetPreset) {
-    targetPreset = BUILTIN_PRESETS[0];
-  }
-  if (targetPreset) {
-    selectPreset(targetPreset, false);
-  }
-}
-
-function restoreActiveRunOnBoot() {
-  try {
-    const raw = localStorage.getItem(RUN_STORAGE_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    const run = deserializeRun(parsed?.run);
-    if (!run) {
-      clearRunStorage();
-      return;
-    }
-
-    appState.currentRun = run;
-    appState.selectedConfig = cloneConfig(run.config);
-    appState.selectedPresetRef = {
-      id: 'active-run',
-      kind: 'temp',
-      name: run.config.presetName || '진행 중인 플레이',
-      tempModified: true,
-    };
-    writeConfigToInputs(appState.selectedConfig);
-    showPlayScreen();
-    renderGameUi();
-  } catch (error) {
-    console.error('진행 중인 플레이 복원에 실패했습니다.', error);
-    clearRunStorage();
-  }
-}
-
-function updateAllUi() {
-  updateSoundButtons();
-  updateSelectedBadges();
-  updateSummary();
-  updateDetailsVisibility();
-  updateStartButtonState();
-  updateExportButtonVisibility();
-}
-
-function renderBuiltinPresets() {
-  el.builtinPresetList.innerHTML = '';
-  BUILTIN_PRESETS.forEach((preset) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'preset-btn';
-    button.dataset.presetId = preset.id;
-    button.innerHTML = `
-      <strong>${escapeHtml(preset.name)}</strong>
-      <small>${preset.config.initialBoardSize}x${preset.config.initialBoardSize} · ${preset.config.initialColorCount}색 시작</small>
-    `;
-    button.addEventListener('click', () => selectPreset(preset, true));
-    el.builtinPresetList.appendChild(button);
-  });
-}
-
-function renderCustomPresets() {
-  el.customPresetList.innerHTML = '';
-  const hasCustom = appState.customPresets.length > 0;
-  el.customPresetEmpty.classList.toggle('hidden', hasCustom);
-
-  appState.customPresets.forEach((preset) => {
-    const li = document.createElement('li');
-    li.className = 'custom-preset-item';
-    li.dataset.presetId = preset.id;
-
-    const mainButton = document.createElement('button');
-    mainButton.type = 'button';
-    mainButton.className = 'custom-preset-main';
-    mainButton.innerHTML = `
-      <strong>${escapeHtml(preset.name)}</strong>
-      <small>${preset.config.initialBoardSize}x${preset.config.initialBoardSize} · ${preset.config.initialColorCount}색 시작 · ${preset.config.stagesPerPlay}스테이지</small>
-    `;
-    mainButton.addEventListener('click', () => selectPreset(preset, true));
-
-    const actions = document.createElement('div');
-    actions.className = 'custom-preset-actions';
-
-    const deleteButton = document.createElement('button');
-    deleteButton.type = 'button';
-    deleteButton.className = 'secondary-btn';
-    deleteButton.textContent = '삭제';
-    deleteButton.addEventListener('click', (event) => {
-      event.stopPropagation();
-      deleteCustomPreset(preset.id);
+    el.toggleDetailsBtn.addEventListener('click', () => {
+      appState.detailsOpen = !appState.detailsOpen;
+      updateDetailsVisibility();
+    });
+    el.savePresetBtn.addEventListener('click', onSavePresetClicked);
+    el.saveAsNewBtn.addEventListener('click', () => saveSelectedConfigAsNew(true));
+    el.startGameBtn.addEventListener('click', startGameFromSelectedConfig);
+    el.exportBtn.addEventListener('click', onExportDataClicked);
+    el.importBtn.addEventListener('click', onImportDataClicked);
+    el.closeClipboardBtn.addEventListener('click', () => el.clipboardCard.classList.add('hidden'));
+    el.copyTextareaBtn.addEventListener('click', async () => {
+      const text = el.clipboardTextarea.value.trim();
+      if (!text) return window.alert('복사할 데이터가 없습니다.');
+      await copyTextToClipboard(text, true);
+    });
+    el.applyTextareaBtn.addEventListener('click', () => importPresetDataFromText(el.clipboardTextarea.value));
+    el.toggleSoundBtn.addEventListener('click', toggleSound);
+    el.playSoundToggleBtn.addEventListener('click', toggleSound);
+    el.giveUpBtn.addEventListener('click', onGiveUpClicked);
+    el.overlayActionBtn.addEventListener('click', () => {
+      hideOverlay();
+      const fn = appState.overlayHandler;
+      appState.overlayHandler = null;
+      if (typeof fn === 'function') fn();
     });
 
-    actions.appendChild(deleteButton);
-    li.appendChild(mainButton);
-    li.appendChild(actions);
-    el.customPresetList.appendChild(li);
-  });
-
-  updateSelectedBadges();
-}
-
-function selectPreset(preset, rememberSelection) {
-  appState.selectedPresetRef = {
-    id: preset.id,
-    kind: preset.kind || 'custom',
-    tempModified: false,
-    name: preset.name,
-  };
-  appState.selectedConfig = cloneConfig({ ...preset.config, presetName: preset.name });
-  writeConfigToInputs(appState.selectedConfig);
-
-  if (rememberSelection) {
-    appState.lastSelectedPresetRef = {
-      id: preset.id,
-      kind: preset.kind || 'custom',
-    };
-    savePresetStorage();
+    bindBoardViewportEvents();
   }
 
-  updateSelectedBadges();
-  updateSummary();
-  updateStartButtonState();
-}
+  function bindBoardViewportEvents() {
+    let mousePan = null;
 
-function writeConfigToInputs(config) {
-  el.presetNameInput.value = config.presetName || '';
-  el.stagesPerPlayInput.value = config.stagesPerPlay;
-  el.initialColorCountInput.value = config.initialColorCount;
-  el.initialBoardSizeInput.value = config.initialBoardSize;
-  el.colorIncreaseEveryInput.value = config.colorIncreaseEvery;
-  el.colorIncreaseAmountInput.value = config.colorIncreaseAmount;
-  el.boardIncreaseEveryInput.value = config.boardIncreaseEvery;
-  el.boardIncreaseAmountInput.value = config.boardIncreaseAmount;
-  el.maxColorCountInput.value = config.maxColorCount;
-  el.maxBoardSizeInput.value = config.maxBoardSize;
-  el.initialMovesInput.value = config.initialMoves;
-  el.stageClearMoveBonusInput.value = config.stageClearMoveBonus;
-  el.boardGrowMoveBonusInput.value = config.boardGrowMoveBonus;
-}
+    el.boardViewport.addEventListener('wheel', (event) => {
+      event.preventDefault();
+      const rect = el.boardViewport.getBoundingClientRect();
+      const px = event.clientX - rect.left;
+      const py = event.clientY - rect.top;
+      const next = clamp(round2(appState.boardView.scale * (event.deltaY < 0 ? 1.08 : 0.92)), 0.4, 3.6);
+      zoomAt(next, px, py);
+    }, { passive: false });
 
-function readConfigFromInputs() {
-  return {
-    presetName: el.presetNameInput.value.trim(),
-    stagesPerPlay: Number(el.stagesPerPlayInput.value),
-    initialColorCount: Number(el.initialColorCountInput.value),
-    initialBoardSize: Number(el.initialBoardSizeInput.value),
-    colorIncreaseEvery: Number(el.colorIncreaseEveryInput.value),
-    colorIncreaseAmount: Number(el.colorIncreaseAmountInput.value),
-    boardIncreaseEvery: Number(el.boardIncreaseEveryInput.value),
-    boardIncreaseAmount: Number(el.boardIncreaseAmountInput.value),
-    maxColorCount: Number(el.maxColorCountInput.value),
-    maxBoardSize: Number(el.maxBoardSizeInput.value),
-    initialMoves: Number(el.initialMovesInput.value),
-    stageClearMoveBonus: Number(el.stageClearMoveBonusInput.value),
-    boardGrowMoveBonus: Number(el.boardGrowMoveBonusInput.value),
-  };
-}
+    el.boardViewport.addEventListener('mousedown', (event) => {
+      mousePan = { x: event.clientX, y: event.clientY, startX: appState.boardView.x, startY: appState.boardView.y };
+    });
+    window.addEventListener('mousemove', (event) => {
+      if (!mousePan) return;
+      appState.boardView.x = mousePan.startX + (event.clientX - mousePan.x);
+      appState.boardView.y = mousePan.startY + (event.clientY - mousePan.y);
+      applyBoardTransform();
+    });
+    window.addEventListener('mouseup', () => { mousePan = null; });
 
-function sanitizeConfig(config) {
-  const sanitized = {
-    presetName: config.presetName || '',
-    stagesPerPlay: clampInt(config.stagesPerPlay, 1, 99, 5),
-    initialColorCount: clampInt(config.initialColorCount, 2, PALETTE.length, 3),
-    initialBoardSize: clampInt(config.initialBoardSize, 3, 20, 5),
-    colorIncreaseEvery: clampInt(config.colorIncreaseEvery, 1, 20, 1),
-    colorIncreaseAmount: clampInt(config.colorIncreaseAmount, 0, 10, 1),
-    boardIncreaseEvery: clampInt(config.boardIncreaseEvery, 1, 20, 3),
-    boardIncreaseAmount: clampInt(config.boardIncreaseAmount, 0, 5, 1),
-    maxColorCount: clampInt(config.maxColorCount, 2, PALETTE.length, 7),
-    maxBoardSize: clampInt(config.maxBoardSize, 3, 25, 8),
-    initialMoves: clampInt(config.initialMoves, 1, 99, 10),
-    stageClearMoveBonus: clampInt(config.stageClearMoveBonus, 0, 50, 3),
-    boardGrowMoveBonus: clampInt(config.boardGrowMoveBonus, 0, 50, 1),
-  };
-
-  sanitized.maxColorCount = Math.max(sanitized.maxColorCount, sanitized.initialColorCount);
-  sanitized.maxBoardSize = Math.max(sanitized.maxBoardSize, sanitized.initialBoardSize);
-  return sanitized;
-}
-
-function validateConfig(config) {
-  if (!config) {
-    return { valid: false, message: '프리셋을 먼저 선택하거나 설정해 주세요.' };
-  }
-  if (!config.presetName.trim()) {
-    return { valid: false, message: '프리셋 이름을 입력해 주세요.' };
-  }
-  if (config.initialColorCount > config.maxColorCount) {
-    return { valid: false, message: '초기 색상 수는 최대 색상 수보다 클 수 없습니다.' };
-  }
-  if (config.initialBoardSize > config.maxBoardSize) {
-    return { valid: false, message: '초기 칸 수는 최대 칸 수보다 클 수 없습니다.' };
-  }
-  if (config.initialColorCount > PALETTE.length) {
-    return { valid: false, message: `최대 지원 색상 수는 ${PALETTE.length}개입니다.` };
-  }
-  return { valid: true, message: '' };
-}
-
-function updateSummary() {
-  if (!appState.selectedConfig) {
-    el.configSummary.innerHTML = '프리셋을 선택하면 요약이 표시됩니다.';
-    return;
-  }
-  const config = sanitizeConfig(appState.selectedConfig);
-  el.configSummary.innerHTML = `
-    <div class="summary-grid">
-      <div><small>프리셋 이름</small><strong>${escapeHtml(config.presetName || '이름 없음')}</strong></div>
-      <div><small>스테이지 수</small><strong>${config.stagesPerPlay}</strong></div>
-      <div><small>초기 색상 / 최대</small><strong>${config.initialColorCount} / ${config.maxColorCount}</strong></div>
-      <div><small>초기 칸 수 / 최대</small><strong>${config.initialBoardSize} / ${config.maxBoardSize}</strong></div>
-      <div><small>색상 증가</small><strong>${config.colorIncreaseEvery}스테이지마다 +${config.colorIncreaseAmount}</strong></div>
-      <div><small>칸 수 증가</small><strong>${config.boardIncreaseEvery}스테이지마다 +${config.boardIncreaseAmount}</strong></div>
-      <div><small>시작 선택 횟수</small><strong>${config.initialMoves}</strong></div>
-      <div><small>클리어 보너스</small><strong>+${config.stageClearMoveBonus}${config.boardGrowMoveBonus ? ` / 보드확장 +${config.boardGrowMoveBonus}` : ''}</strong></div>
-    </div>
-  `;
-}
-
-function updateDetailsVisibility() {
-  el.detailsPanel.classList.toggle('hidden', !appState.detailsOpen);
-  el.toggleDetailsBtn.textContent = appState.detailsOpen ? '세부 설정 접기' : '세부 설정 펼치기';
-}
-
-function updateStartButtonState() {
-  const config = appState.selectedConfig ? sanitizeConfig(appState.selectedConfig) : null;
-  const validation = validateConfig(config);
-  el.startGameBtn.disabled = !validation.valid;
-  if (!validation.valid && config) {
-    el.boardStatus.textContent = validation.message;
-  }
-}
-
-function updateExportButtonVisibility() {
-  el.exportBtn.classList.toggle('hidden', !hasExportablePresetData());
-}
-
-function updateSelectedBadges() {
-  const selectedId = appState.selectedPresetRef?.id || null;
-  document.querySelectorAll('.preset-btn, .custom-preset-item').forEach((node) => {
-    node.classList.toggle('selected', node.dataset.presetId === selectedId);
-  });
-
-  if (!appState.selectedConfig) {
-    el.selectedPresetBadge.textContent = '선택 없음';
-    el.selectedPresetBadge.classList.add('subtle');
-    return;
+    el.boardViewport.addEventListener('touchstart', onTouchStart, { passive: false });
+    el.boardViewport.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.boardViewport.addEventListener('touchend', onTouchEnd, { passive: false });
+    el.boardViewport.addEventListener('touchcancel', onTouchEnd, { passive: false });
   }
 
-  const isModified = Boolean(appState.selectedPresetRef?.tempModified);
-  const name = appState.selectedConfig.presetName || appState.selectedPresetRef?.name || '임시 설정';
-  el.selectedPresetBadge.textContent = isModified ? `${name} (임시 수정됨)` : name;
-  el.selectedPresetBadge.classList.toggle('subtle', false);
-}
-
-function onSavePresetClicked() {
-  if (!appState.selectedConfig) {
-    window.alert('저장할 프리셋이 없습니다.');
-    return;
-  }
-
-  const config = sanitizeConfig(readConfigFromInputs());
-  const validation = validateConfig(config);
-  if (!validation.valid) {
-    window.alert(validation.message);
-    return;
-  }
-
-  const ref = appState.selectedPresetRef;
-  if (ref && ref.kind === 'custom') {
-    const overwrite = window.confirm('현재 사용자 프리셋을 덮어쓸까요? 취소를 누르면 새 프리셋으로 저장합니다.');
-    if (overwrite) {
-      overwriteCustomPreset(ref.id, config);
-    } else {
-      createCustomPreset(config);
+  function onTouchStart(event) {
+    if (!appState.currentRun) return;
+    if (event.touches.length === 1) {
+      const touch = event.touches[0];
+      appState.gesture = {
+        type: 'pan',
+        startX: touch.clientX,
+        startY: touch.clientY,
+        baseX: appState.boardView.x,
+        baseY: appState.boardView.y,
+      };
+    } else if (event.touches.length === 2) {
+      const [a, b] = event.touches;
+      appState.gesture = {
+        type: 'pinch',
+        baseScale: appState.boardView.scale,
+        baseX: appState.boardView.x,
+        baseY: appState.boardView.y,
+        startDistance: distance(a, b),
+        startMid: midpoint(a, b),
+      };
     }
-    return;
   }
 
-  createCustomPreset(config);
-}
-
-function onSaveAsNewClicked() {
-  if (!appState.selectedConfig) {
-    window.alert('저장할 프리셋이 없습니다.');
-    return;
-  }
-  const config = sanitizeConfig(readConfigFromInputs());
-  const validation = validateConfig(config);
-  if (!validation.valid) {
-    window.alert(validation.message);
-    return;
-  }
-  createCustomPreset(config);
-}
-
-function createCustomPreset(config) {
-  const preset = {
-    id: `custom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    kind: 'custom',
-    name: config.presetName.trim(),
-    config: cloneConfig(config),
-  };
-  appState.customPresets.unshift(preset);
-  appState.lastSelectedPresetRef = { id: preset.id, kind: 'custom' };
-  savePresetStorage();
-  renderCustomPresets();
-  selectPreset(preset, false);
-  savePresetStorage();
-  updateExportButtonVisibility();
-  window.alert('프리셋을 저장했습니다.');
-}
-
-function overwriteCustomPreset(id, config) {
-  const target = appState.customPresets.find((item) => item.id === id);
-  if (!target) {
-    createCustomPreset(config);
-    return;
-  }
-  target.name = config.presetName.trim();
-  target.config = cloneConfig(config);
-  appState.lastSelectedPresetRef = { id: target.id, kind: 'custom' };
-  savePresetStorage();
-  renderCustomPresets();
-  selectPreset(target, false);
-  savePresetStorage();
-  updateExportButtonVisibility();
-  window.alert('프리셋을 덮어썼습니다.');
-}
-
-function deleteCustomPreset(id) {
-  const target = appState.customPresets.find((item) => item.id === id);
-  if (!target) {
-    return;
-  }
-  const ok = window.confirm(`'${target.name}' 프리셋을 삭제할까요?`);
-  if (!ok) {
-    return;
-  }
-  appState.customPresets = appState.customPresets.filter((item) => item.id !== id);
-  if (appState.lastSelectedPresetRef?.id === id) {
-    appState.lastSelectedPresetRef = null;
-  }
-  if (appState.selectedPresetRef?.id === id) {
-    appState.selectedPresetRef = null;
-    appState.selectedConfig = null;
-  }
-  savePresetStorage();
-  renderCustomPresets();
-  if (!appState.selectedConfig) {
-    applyLastSelectedPresetOnBoot();
-  }
-  updateAllUi();
-}
-
-function getPresetByRef(ref) {
-  if (!ref) return null;
-  if (ref.kind === 'builtin') {
-    return BUILTIN_PRESETS.find((item) => item.id === ref.id) || null;
-  }
-  if (ref.kind === 'custom-temp-last-played' && ref.configSnapshot) {
-    return {
-      id: ref.id || 'unsaved-last-played',
-      kind: 'temp',
-      name: ref.configSnapshot.presetName || '마지막 플레이 설정',
-      config: sanitizeConfig(ref.configSnapshot),
-    };
-  }
-  return appState.customPresets.find((item) => item.id === ref.id) || null;
-}
-
-function hasExportablePresetData() {
-  return appState.customPresets.length > 0 || Boolean(appState.lastSelectedPresetRef);
-}
-
-function buildExportPayload() {
-  return {
-    version: EXPORT_VERSION,
-    customPresets: appState.customPresets,
-    lastSelectedPresetRef: appState.lastSelectedPresetRef,
-  };
-}
-
-async function onExportDataClicked() {
-  if (!hasExportablePresetData()) {
-    window.alert('복사할 저장 데이터가 없습니다.');
-    return;
-  }
-  const text = JSON.stringify(buildExportPayload());
-  el.clipboardTextarea.value = text;
-  el.clipboardCard.classList.remove('hidden');
-  await copyTextToClipboard(text, false);
-}
-
-async function onImportDataClicked() {
-  el.clipboardCard.classList.remove('hidden');
-  try {
-    const text = await navigator.clipboard.readText();
-    if (!text.trim()) {
-      window.alert('클립보드에 텍스트가 없습니다. 아래 칸에 직접 붙여넣어도 됩니다.');
+  function onTouchMove(event) {
+    if (!appState.gesture) return;
+    event.preventDefault();
+    if (appState.gesture.type === 'pan' && event.touches.length === 1) {
+      const touch = event.touches[0];
+      appState.boardView.x = appState.gesture.baseX + (touch.clientX - appState.gesture.startX);
+      appState.boardView.y = appState.gesture.baseY + (touch.clientY - appState.gesture.startY);
+      applyBoardTransform();
       return;
     }
-    el.clipboardTextarea.value = text;
-    importPresetDataFromText(text);
-  } catch (error) {
-    console.warn('클립보드 읽기에 실패했습니다.', error);
-    window.alert('클립보드 읽기 권한이 없거나 브라우저에서 제한되었습니다. 아래 입력칸에 데이터를 직접 붙여넣어 적용해 주세요.');
-  }
-}
-
-async function copyTextToClipboard(text, showSuccessAlert) {
-  try {
-    await navigator.clipboard.writeText(text);
-    if (showSuccessAlert) {
-      window.alert('클립보드에 복사했습니다.');
+    if (event.touches.length === 2) {
+      const [a, b] = event.touches;
+      const mid = midpoint(a, b);
+      const ratio = distance(a, b) / Math.max(1, appState.gesture.startDistance);
+      const nextScale = clamp(round2(appState.gesture.baseScale * ratio), 0.4, 3.6);
+      const rect = el.boardViewport.getBoundingClientRect();
+      zoomAt(nextScale, mid.x - rect.left, mid.y - rect.top, appState.gesture.baseX, appState.gesture.baseY, appState.gesture.baseScale, appState.gesture.startMid);
+      const deltaMidX = mid.x - appState.gesture.startMid.x;
+      const deltaMidY = mid.y - appState.gesture.startMid.y;
+      appState.boardView.x += deltaMidX;
+      appState.boardView.y += deltaMidY;
+      appState.gesture.startMid = mid;
+      appState.gesture.baseX = appState.boardView.x;
+      appState.gesture.baseY = appState.boardView.y;
+      appState.gesture.baseScale = appState.boardView.scale;
+      appState.gesture.startDistance = distance(a, b);
+      applyBoardTransform();
     }
-  } catch (error) {
-    console.warn('클립보드 복사에 실패했습니다.', error);
-    window.alert('클립보드 복사에 실패했습니다. 아래 텍스트를 직접 복사해 주세요.');
-  }
-}
-
-function importPresetDataFromText(text) {
-  const trimmed = String(text || '').trim();
-  if (!trimmed) {
-    window.alert('불러올 저장 데이터가 없습니다.');
-    return;
   }
 
-  try {
-    const parsed = JSON.parse(trimmed);
-    const customPresets = Array.isArray(parsed.customPresets)
-      ? parsed.customPresets.map(normalizeCustomPreset).filter(Boolean)
-      : [];
-    const lastSelectedPresetRef = parsed.lastSelectedPresetRef || null;
+  function onTouchEnd(event) {
+    if (event.touches.length === 1) {
+      const touch = event.touches[0];
+      appState.gesture = {
+        type: 'pan',
+        startX: touch.clientX,
+        startY: touch.clientY,
+        baseX: appState.boardView.x,
+        baseY: appState.boardView.y,
+      };
+      return;
+    }
+    if (event.touches.length === 0) {
+      appState.gesture = null;
+    }
+  }
 
-    appState.customPresets = dedupePresetIds(customPresets);
-    appState.lastSelectedPresetRef = lastSelectedPresetRef;
-    savePresetStorage();
-    renderCustomPresets();
-    applyLastSelectedPresetOnBoot();
+  function distance(a, b) {
+    const dx = a.clientX - b.clientX;
+    const dy = a.clientY - b.clientY;
+    return Math.hypot(dx, dy);
+  }
+
+  function midpoint(a, b) {
+    return { x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 };
+  }
+
+  function zoomAt(nextScale, pivotX, pivotY, baseX = appState.boardView.x, baseY = appState.boardView.y, baseScale = appState.boardView.scale) {
+    const worldX = (pivotX - baseX) / baseScale;
+    const worldY = (pivotY - baseY) / baseScale;
+    appState.boardView.scale = nextScale;
+    appState.boardView.x = pivotX - worldX * nextScale;
+    appState.boardView.y = pivotY - worldY * nextScale;
+    applyBoardTransform();
+  }
+
+  function onConfigInputChanged() {
+    const config = sanitizeConfig(readConfigFromInputs());
+    appState.selectedConfig = config;
+    if (appState.selectedPresetRef) {
+      appState.selectedPresetRef = { ...appState.selectedPresetRef, tempModified: true };
+    } else {
+      appState.selectedPresetRef = { id: `temp-${Date.now()}`, kind: 'temp', name: config.presetName || '임시 설정', tempModified: true };
+    }
     updateAllUi();
-    window.alert('저장 데이터를 불러왔습니다.');
-  } catch (error) {
-    console.error('저장 데이터 불러오기에 실패했습니다.', error);
-    window.alert('저장 데이터 형식이 올바르지 않습니다.');
   }
-}
 
-function normalizeCustomPreset(raw) {
-  if (!raw || typeof raw !== 'object') return null;
-  const id = String(raw.id || `custom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
-  const name = String(raw.name || raw.config?.presetName || '사용자 프리셋').trim();
-  const config = sanitizeConfig({
-    ...raw.config,
-    presetName: raw.config?.presetName || name,
-  });
-  return {
-    id,
-    kind: 'custom',
-    name,
-    config,
-  };
-}
-
-function dedupePresetIds(items) {
-  const seen = new Set();
-  return items.map((item) => {
-    let nextId = item.id;
-    while (seen.has(nextId)) {
-      nextId = `${nextId}-${Math.random().toString(36).slice(2, 5)}`;
+  function loadPresetStorage() {
+    try {
+      const raw = localStorage.getItem(LOCAL_PRESET_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      appState.customPresets = Array.isArray(parsed.customPresets) ? parsed.customPresets.map(normalizeCustomPreset).filter(Boolean) : [];
+      appState.lastSelectedPresetRef = parsed.lastSelectedPresetRef || null;
+    } catch (error) {
+      console.warn('프리셋 저장 데이터를 읽지 못했습니다.', error);
+      appState.customPresets = [];
+      appState.lastSelectedPresetRef = null;
     }
-    seen.add(nextId);
-    return { ...item, id: nextId };
-  });
-}
-
-function toggleSound() {
-  appState.soundEnabled = !appState.soundEnabled;
-  saveSoundPreference();
-  updateSoundButtons();
-}
-
-function updateSoundButtons() {
-  const icon = appState.soundEnabled ? '🔊' : '🔇';
-  el.toggleSoundBtn.textContent = icon;
-  el.playSoundToggleBtn.textContent = icon;
-}
-
-function playSound(name) {
-  if (!appState.soundEnabled) return;
-  const audio = audioState[name];
-  if (!audio) return;
-  audio.currentTime = 0;
-  audio.play().catch(() => {});
-}
-
-function startGameFromSelectedConfig() {
-  const config = sanitizeConfig(readConfigFromInputs());
-  const validation = validateConfig(config);
-  if (!validation.valid) {
-    window.alert(validation.message);
-    return;
   }
 
-  appState.selectedConfig = config;
-  const ref = appState.selectedPresetRef;
-  if (ref && ref.kind !== 'temp' && !ref.tempModified) {
-    appState.lastSelectedPresetRef = { id: ref.id, kind: ref.kind };
-  } else {
-    appState.lastSelectedPresetRef = {
-      id: 'unsaved-last-played',
-      kind: 'custom-temp-last-played',
-      configSnapshot: cloneConfig(config),
+  function savePresetStorage() {
+    const payload = { version: EXPORT_VERSION, customPresets: appState.customPresets, lastSelectedPresetRef: appState.lastSelectedPresetRef };
+    localStorage.setItem(LOCAL_PRESET_KEY, JSON.stringify(payload));
+  }
+
+  function loadSoundPreference() {
+    try {
+      const raw = localStorage.getItem(SOUND_PREF_KEY);
+      appState.soundEnabled = raw === null ? true : raw === '1';
+    } catch {
+      appState.soundEnabled = true;
+    }
+  }
+
+  function saveSoundPreference() {
+    try {
+      localStorage.setItem(SOUND_PREF_KEY, appState.soundEnabled ? '1' : '0');
+    } catch {}
+  }
+
+  function restoreActiveRunOnBoot() {
+    try {
+      const raw = localStorage.getItem(LOCAL_RUN_KEY);
+      if (!raw) return false;
+      const parsed = JSON.parse(raw);
+      const run = deserializeRun(parsed.run);
+      if (!run) {
+        clearRunStorage();
+        return false;
+      }
+      appState.currentRun = run;
+      appState.selectedConfig = cloneConfig(run.config);
+      appState.selectedPresetRef = { id: 'active-run', kind: 'temp', name: run.config.presetName || '진행 중인 플레이', tempModified: true };
+      writeConfigToInputs(appState.selectedConfig);
+      showPlayScreen();
+      renderGameUi();
+      requestAnimationFrame(fitBoardToViewport);
+      return true;
+    } catch (error) {
+      console.warn('진행 중인 플레이를 복원하지 못했습니다.', error);
+      clearRunStorage();
+      return false;
+    }
+  }
+
+  function saveRunStorage() {
+    try {
+      if (!appState.currentRun) {
+        localStorage.removeItem(LOCAL_RUN_KEY);
+        return;
+      }
+      localStorage.setItem(LOCAL_RUN_KEY, JSON.stringify({ version: EXPORT_VERSION, run: serializeRun(appState.currentRun) }));
+    } catch (error) {
+      console.warn('진행 중인 플레이 저장에 실패했습니다.', error);
+    }
+  }
+
+  function clearRunStorage() {
+    try { localStorage.removeItem(LOCAL_RUN_KEY); } catch {}
+  }
+
+  function applyLastSelectedPresetOnBoot() {
+    let target = null;
+    if (appState.lastSelectedPresetRef) {
+      target = getPresetByRef(appState.lastSelectedPresetRef);
+    }
+    if (!target && appState.lastSelectedPresetRef?.kind === 'custom-temp-last-played' && appState.lastSelectedPresetRef.configSnapshot) {
+      const config = sanitizeConfig(appState.lastSelectedPresetRef.configSnapshot);
+      appState.selectedPresetRef = { id: 'unsaved-last-played', kind: 'temp', name: config.presetName || '마지막 플레이 설정', tempModified: true };
+      appState.selectedConfig = config;
+      writeConfigToInputs(config);
+      return;
+    }
+    if (!target) target = BUILTIN_PRESETS[0] || null;
+    if (target) selectPreset(target, false);
+  }
+
+  function updateAllUi() {
+    renderCustomPresets();
+    updateSelectedBadges();
+    updateDetailsVisibility();
+    updateSummary();
+    updateStartButtonState();
+    updateExportButtonVisibility();
+    updateSoundButtons();
+  }
+
+  function renderBuiltinPresets() {
+    el.builtinPresetList.innerHTML = '';
+    BUILTIN_PRESETS.forEach((preset) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'preset-btn';
+      button.dataset.presetId = preset.id;
+      button.innerHTML = `<strong>${escapeHtml(preset.name)}</strong><small>${preset.config.initialBoardSize}x${preset.config.initialBoardSize} · ${preset.config.initialColorCount}색 시작</small>`;
+      button.addEventListener('click', () => selectPreset(preset, true));
+      el.builtinPresetList.appendChild(button);
+    });
+  }
+
+  function renderCustomPresets() {
+    el.customPresetList.innerHTML = '';
+    const hasCustom = appState.customPresets.length > 0;
+    el.customPresetEmpty.classList.toggle('hidden', hasCustom);
+    appState.customPresets.forEach((preset) => {
+      const li = document.createElement('li');
+      li.className = 'custom-preset-item';
+      li.dataset.presetId = preset.id;
+      const main = document.createElement('button');
+      main.type = 'button';
+      main.className = 'custom-preset-main';
+      main.innerHTML = `<strong>${escapeHtml(preset.name)}</strong><small>${preset.config.initialBoardSize}x${preset.config.initialBoardSize} · ${preset.config.initialColorCount}색 시작 · ${preset.config.subStagesPerStage}회/스테이지</small>`;
+      main.addEventListener('click', () => selectPreset(preset, true));
+      const actions = document.createElement('div');
+      actions.className = 'custom-preset-actions';
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'secondary-btn';
+      del.textContent = '삭제';
+      del.addEventListener('click', (event) => {
+        event.stopPropagation();
+        deleteCustomPreset(preset.id);
+      });
+      actions.appendChild(del);
+      li.appendChild(main);
+      li.appendChild(actions);
+      el.customPresetList.appendChild(li);
+    });
+  }
+
+  function selectPreset(preset, rememberSelection) {
+    appState.selectedPresetRef = { id: preset.id, kind: preset.kind || 'custom', name: preset.name, tempModified: false };
+    appState.selectedConfig = cloneConfig({ ...preset.config, presetName: preset.name });
+    writeConfigToInputs(appState.selectedConfig);
+    if (rememberSelection) {
+      appState.lastSelectedPresetRef = { id: preset.id, kind: preset.kind || 'custom' };
+      savePresetStorage();
+    }
+    updateAllUi();
+  }
+
+  function updateSelectedBadges() {
+    const selected = appState.selectedPresetRef;
+    el.selectedPresetBadge.textContent = selected ? selected.name || '선택됨' : '선택 없음';
+
+    [...el.builtinPresetList.children].forEach((node) => {
+      node.classList.toggle('active', !!selected && selected.kind === 'builtin' && node.dataset.presetId === selected.id && !selected.tempModified);
+    });
+    [...el.customPresetList.children].forEach((node) => {
+      node.classList.toggle('active', !!selected && selected.kind === 'custom' && node.dataset.presetId === selected.id && !selected.tempModified);
+    });
+  }
+
+  function updateDetailsVisibility() {
+    el.detailsPanel.classList.toggle('hidden', !appState.detailsOpen);
+    el.toggleDetailsBtn.textContent = appState.detailsOpen ? '세부 설정 접기' : '세부 설정 펼치기';
+  }
+
+  function updateSummary() {
+    if (!appState.selectedConfig) {
+      el.configSummary.textContent = '프리셋을 선택하면 요약이 표시됩니다.';
+      el.configSummary.classList.add('muted');
+      return;
+    }
+    const c = appState.selectedConfig;
+    el.configSummary.classList.remove('muted');
+    const maxColor = c.maxColorCount == null ? '제한 없음' : `${c.maxColorCount}색`;
+    const maxBoard = c.maxBoardSize == null ? '제한 없음' : `${c.maxBoardSize}x${c.maxBoardSize}`;
+    el.configSummary.innerHTML = [
+      `<strong>${escapeHtml(c.presetName || '이름 없는 설정')}</strong>`,
+      `메인 스테이지당 플레이 횟수: ${c.subStagesPerStage}`,
+      `초기: ${c.initialBoardSize}x${c.initialBoardSize} · ${c.initialColorCount}색 · 시작 선택 횟수 ${c.initialMoves}`,
+      `색상 증가: 메인 스테이지 ${c.colorIncreaseEveryStages}회마다 +${c.colorIncreaseAmount}`,
+      `칸 수 증가: 메인 스테이지 ${c.boardIncreaseEveryStages}회마다 +${c.boardIncreaseAmount}`,
+      `최대 색상 수: ${maxColor} · 최대 칸 수: ${maxBoard}`,
+      `판 클리어 보너스: +${c.stageClearMoveBonus} · 보드 확장 보너스: +${c.boardGrowMoveBonus}`,
+    ].join('<br>');
+  }
+
+  function updateStartButtonState() {
+    const valid = !!appState.selectedConfig && validateConfig(appState.selectedConfig).valid;
+    el.startGameBtn.disabled = !valid;
+  }
+
+  function updateExportButtonVisibility() {
+    const hasAny = appState.customPresets.length > 0 || !!appState.lastSelectedPresetRef;
+    el.exportBtn.classList.toggle('hidden', !hasAny);
+  }
+
+  function updateSoundButtons() {
+    const icon = appState.soundEnabled ? '🔊' : '🔇';
+    el.toggleSoundBtn.textContent = icon;
+    el.playSoundToggleBtn.textContent = icon;
+  }
+
+  function writeConfigToInputs(config) {
+    el.presetNameInput.value = config.presetName || '';
+    el.subStagesPerStageInput.value = config.subStagesPerStage;
+    el.initialColorCountInput.value = config.initialColorCount;
+    el.initialBoardSizeInput.value = config.initialBoardSize;
+    el.colorIncreaseEveryInput.value = config.colorIncreaseEveryStages;
+    el.colorIncreaseAmountInput.value = config.colorIncreaseAmount;
+    el.boardIncreaseEveryInput.value = config.boardIncreaseEveryStages;
+    el.boardIncreaseAmountInput.value = config.boardIncreaseAmount;
+    el.maxColorCountInput.value = config.maxColorCount == null ? '' : config.maxColorCount;
+    el.maxBoardSizeInput.value = config.maxBoardSize == null ? '' : config.maxBoardSize;
+    el.initialMovesInput.value = config.initialMoves;
+    el.stageClearMoveBonusInput.value = config.stageClearMoveBonus;
+    el.boardGrowMoveBonusInput.value = config.boardGrowMoveBonus;
+  }
+
+  function readConfigFromInputs() {
+    return {
+      presetName: el.presetNameInput.value.trim(),
+      subStagesPerStage: toNumber(el.subStagesPerStageInput.value),
+      initialColorCount: toNumber(el.initialColorCountInput.value),
+      initialBoardSize: toNumber(el.initialBoardSizeInput.value),
+      colorIncreaseEveryStages: toNumber(el.colorIncreaseEveryInput.value),
+      colorIncreaseAmount: toNumber(el.colorIncreaseAmountInput.value),
+      boardIncreaseEveryStages: toNumber(el.boardIncreaseEveryInput.value),
+      boardIncreaseAmount: toNumber(el.boardIncreaseAmountInput.value),
+      maxColorCount: toOptionalNumber(el.maxColorCountInput.value),
+      maxBoardSize: toOptionalNumber(el.maxBoardSizeInput.value),
+      initialMoves: toNumber(el.initialMovesInput.value),
+      stageClearMoveBonus: toNumber(el.stageClearMoveBonusInput.value),
+      boardGrowMoveBonus: toNumber(el.boardGrowMoveBonusInput.value),
     };
   }
-  savePresetStorage();
-  playSound('start');
 
-  appState.currentRun = {
-    config,
-    stageIndex: 1,
-    remainingMoves: config.initialMoves,
-    currentColorCount: config.initialColorCount,
-    currentBoardSize: config.initialBoardSize,
-    board: [],
-    emptyCells: new Set(),
-    finished: false,
-  };
-
-  showPlayScreen();
-  setupStageBoard();
-  saveRunStorage();
-}
-
-function showPlayScreen() {
-  el.setupScreen.classList.remove('active');
-  el.playScreen.classList.add('active');
-}
-
-function showSetupScreen(clearRun = true) {
-  el.playScreen.classList.remove('active');
-  el.setupScreen.classList.add('active');
-  appState.currentRun = null;
-  if (clearRun) {
-    clearRunStorage();
+  function sanitizeConfig(raw) {
+    const paletteMax = PALETTE.length;
+    const initialColorCount = clampInt(raw.initialColorCount, 2, paletteMax, 3);
+    const initialBoardSize = clampInt(raw.initialBoardSize, 3, MAX_FALLBACK_BOARD_SIZE, 5);
+    let maxColorCount = raw.maxColorCount == null ? null : clampInt(raw.maxColorCount, 2, paletteMax, paletteMax);
+    let maxBoardSize = raw.maxBoardSize == null ? null : clampInt(raw.maxBoardSize, 3, MAX_FALLBACK_BOARD_SIZE, MAX_FALLBACK_BOARD_SIZE);
+    if (maxColorCount != null && maxColorCount < initialColorCount) maxColorCount = initialColorCount;
+    if (maxBoardSize != null && maxBoardSize < initialBoardSize) maxBoardSize = initialBoardSize;
+    return {
+      presetName: String(raw.presetName || '').trim(),
+      subStagesPerStage: clampInt(raw.subStagesPerStage, 1, 99, 7),
+      initialColorCount,
+      initialBoardSize,
+      colorIncreaseEveryStages: clampInt(raw.colorIncreaseEveryStages, 1, 99, 1),
+      colorIncreaseAmount: clampInt(raw.colorIncreaseAmount, 0, paletteMax, 1),
+      boardIncreaseEveryStages: clampInt(raw.boardIncreaseEveryStages, 1, 99, 3),
+      boardIncreaseAmount: clampInt(raw.boardIncreaseAmount, 0, 10, 1),
+      maxColorCount,
+      maxBoardSize,
+      initialMoves: clampInt(raw.initialMoves, 1, 999, 10),
+      stageClearMoveBonus: clampInt(raw.stageClearMoveBonus, 0, 999, 2),
+      boardGrowMoveBonus: clampInt(raw.boardGrowMoveBonus, 0, 999, 1),
+    };
   }
-  updateAllUi();
-}
 
-function onGiveUpClicked() {
-  const ok = window.confirm('현재 플레이를 포기하고 초기 화면으로 돌아갈까요? 진행 중인 플레이 정보는 버려집니다.');
-  if (!ok) return;
-  showSetupScreen(true);
-}
+  function validateConfig(config) {
+    if (!config.presetName) return { valid: false, message: '프리셋 이름을 입력해 주세요.' };
+    if (config.initialColorCount > PALETTE.length) return { valid: false, message: '초기 색상 수가 팔레트 개수를 초과합니다.' };
+    return { valid: true };
+  }
 
-function setupStageBoard() {
-  const run = appState.currentRun;
-  if (!run) return;
+  function onSavePresetClicked() {
+    if (!appState.selectedConfig) return;
+    const validation = validateConfig(appState.selectedConfig);
+    if (!validation.valid) return window.alert(validation.message);
 
-  const generated = generateBoard(run.currentBoardSize, run.currentColorCount);
-  run.board = generated.board;
-  run.emptyCells = generated.emptyCells;
-  run.finished = false;
-
-  renderGameUi();
-  saveRunStorage();
-}
-
-function generateBoard(size, colorCount) {
-  const board = Array.from({ length: size }, () => Array.from({ length: size }, () => 0));
-  const clusterStrength = getClusterStrength(appState.currentRun.stageIndex, appState.currentRun.config.stagesPerPlay);
-
-  for (let row = 0; row < size; row += 1) {
-    for (let col = 0; col < size; col += 1) {
-      const neighborCandidates = [];
-      if (row > 0) neighborCandidates.push(board[row - 1][col]);
-      if (col > 0) neighborCandidates.push(board[row][col - 1]);
-
-      let colorIndex;
-      if (neighborCandidates.length && Math.random() < clusterStrength) {
-        colorIndex = neighborCandidates[Math.floor(Math.random() * neighborCandidates.length)];
-      } else {
-        colorIndex = Math.floor(Math.random() * colorCount);
+    const selected = appState.selectedPresetRef;
+    if (selected && selected.kind === 'custom' && selected.id) {
+      const ok = window.confirm('현재 사용자 프리셋에 덮어쓸까요? 취소하면 새 프리셋으로 저장되지 않습니다.');
+      if (!ok) return;
+      const index = appState.customPresets.findIndex((item) => item.id === selected.id);
+      if (index >= 0) {
+        appState.customPresets[index] = createCustomPreset(selected.id, appState.selectedConfig.presetName, appState.selectedConfig);
+        appState.selectedPresetRef = { id: selected.id, kind: 'custom', name: appState.selectedConfig.presetName, tempModified: false };
+        appState.lastSelectedPresetRef = { id: selected.id, kind: 'custom' };
+        savePresetStorage();
+        updateAllUi();
       }
-      board[row][col] = colorIndex;
+      return;
     }
+    saveSelectedConfigAsNew(false);
   }
 
-  const innerCells = [];
-  for (let row = 1; row < size - 1; row += 1) {
-    for (let col = 1; col < size - 1; col += 1) {
-      innerCells.push([row, col]);
-    }
+  function saveSelectedConfigAsNew(showMessage) {
+    if (!appState.selectedConfig) return;
+    const validation = validateConfig(appState.selectedConfig);
+    if (!validation.valid) return window.alert(validation.message);
+    const id = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const preset = createCustomPreset(id, appState.selectedConfig.presetName, appState.selectedConfig);
+    appState.customPresets.push(preset);
+    appState.selectedPresetRef = { id, kind: 'custom', name: preset.name, tempModified: false };
+    appState.lastSelectedPresetRef = { id, kind: 'custom' };
+    savePresetStorage();
+    updateAllUi();
+    if (showMessage) window.alert('새 프리셋으로 저장했습니다.');
   }
 
-  const emptySeed = innerCells[Math.floor(Math.random() * innerCells.length)];
-  const emptyCells = floodFromSeed(board, emptySeed[0], emptySeed[1], board[emptySeed[0]][emptySeed[1]]);
-  emptyCells.forEach((key) => {
-    const [row, col] = key.split(',').map(Number);
-    board[row][col] = EMPTY_CELL;
-  });
+  function createCustomPreset(id, name, config) {
+    return { id, kind: 'custom', name, config: cloneConfig({ ...config, presetName: name }) };
+  }
 
-  return { board, emptyCells };
-}
+  function deleteCustomPreset(id) {
+    const preset = appState.customPresets.find((item) => item.id === id);
+    if (!preset) return;
+    const ok = window.confirm(`'${preset.name}' 프리셋을 삭제할까요?`);
+    if (!ok) return;
+    appState.customPresets = appState.customPresets.filter((item) => item.id !== id);
+    if (appState.selectedPresetRef?.kind === 'custom' && appState.selectedPresetRef.id === id) {
+      appState.selectedPresetRef = null;
+      appState.selectedConfig = null;
+    }
+    if (appState.lastSelectedPresetRef?.kind === 'custom' && appState.lastSelectedPresetRef.id === id) {
+      appState.lastSelectedPresetRef = null;
+    }
+    savePresetStorage();
+    updateAllUi();
+  }
 
-function getClusterStrength(stageIndex, totalStages) {
-  if (totalStages <= 1) return 0.52;
-  const progress = (stageIndex - 1) / (totalStages - 1);
-  return 0.58 - progress * 0.28;
-}
+  function normalizeCustomPreset(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const id = String(raw.id || '');
+    const name = String(raw.name || '').trim();
+    if (!id || !name) return null;
+    return { id, kind: 'custom', name, config: sanitizeConfig({ ...(raw.config || {}), presetName: name }) };
+  }
 
-function renderGameUi() {
-  const run = appState.currentRun;
-  if (!run) return;
+  function getPresetByRef(ref) {
+    if (!ref) return null;
+    if (ref.kind === 'builtin') return BUILTIN_PRESETS.find((item) => item.id === ref.id) || null;
+    if (ref.kind === 'custom') return appState.customPresets.find((item) => item.id === ref.id) || null;
+    return null;
+  }
 
-  el.moveCounter.textContent = `선택 횟수: ${run.remainingMoves}`;
-  el.stageIndicator.textContent = `Stage ${run.stageIndex}`;
-  el.boardInfo.textContent = `${run.currentBoardSize}x${run.currentBoardSize} · ${run.currentColorCount}색`;
-  el.boardStatus.textContent = `${run.config.presetName} · 빈 영역을 넓혀 보드를 모두 비우세요.`;
+  async function onExportDataClicked() {
+    const payload = {
+      version: EXPORT_VERSION,
+      customPresets: appState.customPresets,
+      lastSelectedPresetRef: appState.lastSelectedPresetRef,
+    };
+    const text = toExportText(payload);
+    el.clipboardTextarea.value = text;
+    el.clipboardCard.classList.remove('hidden');
+    await copyTextToClipboard(text, false);
+  }
 
-  renderBoard();
-  renderColorToolbar();
-}
-
-function renderBoard() {
-  const run = appState.currentRun;
-  if (!run) return;
-
-  el.board.innerHTML = '';
-  el.board.style.gridTemplateColumns = `repeat(${run.currentBoardSize}, 1fr)`;
-  el.board.style.gridTemplateRows = `repeat(${run.currentBoardSize}, 1fr)`;
-
-  for (let row = 0; row < run.currentBoardSize; row += 1) {
-    for (let col = 0; col < run.currentBoardSize; col += 1) {
-      const cellValue = run.board[row][col];
-      const cell = document.createElement('div');
-      cell.className = 'cell';
-      if (cellValue === EMPTY_CELL) {
-        cell.classList.add('empty');
-      } else {
-        cell.style.backgroundColor = getPaletteColor(cellValue);
+  async function onImportDataClicked() {
+    el.clipboardCard.classList.remove('hidden');
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text.trim()) {
+        el.clipboardTextarea.value = text;
       }
-      el.board.appendChild(cell);
+    } catch {
+      el.clipboardTextarea.focus();
     }
   }
-}
 
-function renderColorToolbar() {
-  const run = appState.currentRun;
-  if (!run) return;
-  el.colorToolbar.innerHTML = '';
-
-  const available = getAvailableAdjacentColors(run.board, run.emptyCells);
-  for (let colorIndex = 0; colorIndex < run.currentColorCount; colorIndex += 1) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'color-btn';
-    button.style.backgroundColor = getPaletteColor(colorIndex);
-    button.title = `색상 ${colorIndex + 1}`;
-
-    const usable = available.has(colorIndex);
-    button.classList.toggle('disabled-color', !usable);
-    button.addEventListener('click', () => selectColor(colorIndex));
-    el.colorToolbar.appendChild(button);
-  }
-}
-
-function selectColor(colorIndex) {
-  const run = appState.currentRun;
-  if (!run || run.finished) return;
-  if (run.remainingMoves <= 0) return;
-
-  const expansion = expandEmptyAreaByColor(run.board, run.emptyCells, colorIndex);
-  if (expansion === 0) {
-    return;
+  function importPresetDataFromText(text) {
+    try {
+      const parsed = fromExportText(text);
+      if (!parsed || typeof parsed !== 'object') throw new Error('invalid');
+      appState.customPresets = Array.isArray(parsed.customPresets) ? parsed.customPresets.map(normalizeCustomPreset).filter(Boolean) : [];
+      appState.lastSelectedPresetRef = parsed.lastSelectedPresetRef || null;
+      savePresetStorage();
+      applyLastSelectedPresetOnBoot();
+      updateAllUi();
+      window.alert('저장 데이터를 불러왔습니다.');
+    } catch {
+      window.alert('붙여넣은 저장 데이터를 읽지 못했습니다.');
+    }
   }
 
-  playSound('colorPick');
-  run.remainingMoves -= 1;
-  saveRunStorage();
-  renderGameUi();
-
-  if (isBoardCleared(run.board)) {
-    onStageCleared();
-    return;
+  async function copyTextToClipboard(text, showDoneAlert) {
+    try {
+      await navigator.clipboard.writeText(text);
+      if (showDoneAlert) window.alert('클립보드에 복사했습니다.');
+    } catch {
+      if (showDoneAlert) window.alert('클립보드 복사에 실패했습니다. 표시된 텍스트를 직접 복사해 주세요.');
+    }
   }
 
-  if (run.remainingMoves <= 0) {
-    onStageFailed();
+  function toggleSound() {
+    appState.soundEnabled = !appState.soundEnabled;
+    saveSoundPreference();
+    updateSoundButtons();
   }
-}
 
-function expandEmptyAreaByColor(board, emptyCells, colorIndex) {
-  const queue = [];
-  const collected = new Set();
-  const seen = new Set();
+  function createAudio(path) {
+    const audio = new Audio(path);
+    audio.preload = 'none';
+    return audio;
+  }
 
-  emptyCells.forEach((key) => {
-    const [row, col] = key.split(',').map(Number);
-    queue.push([row, col]);
-    seen.add(key);
-  });
+  function playSound(type) {
+    if (!appState.soundEnabled) return;
+    const audio = audioMap[type];
+    if (!audio) return;
+    audio.currentTime = 0;
+    audio.play().catch(() => {});
+  }
 
-  while (queue.length) {
-    const [row, col] = queue.shift();
-    for (const [nextRow, nextCol] of getNeighborCoords(row, col, board.length)) {
-      const key = `${nextRow},${nextCol}`;
-      if (seen.has(key)) continue;
+  function startGameFromSelectedConfig() {
+    const config = sanitizeConfig(readConfigFromInputs());
+    const validation = validateConfig(config);
+    if (!validation.valid) return window.alert(validation.message);
+    appState.selectedConfig = config;
+
+    const ref = appState.selectedPresetRef;
+    if (ref && ref.kind !== 'temp' && !ref.tempModified) {
+      appState.lastSelectedPresetRef = { id: ref.id, kind: ref.kind };
+    } else {
+      appState.lastSelectedPresetRef = { id: 'unsaved-last-played', kind: 'custom-temp-last-played', configSnapshot: cloneConfig(config) };
+    }
+    savePresetStorage();
+    playSound('start');
+
+    appState.currentRun = {
+      config,
+      mainStage: 1,
+      subStage: 1,
+      remainingMoves: config.initialMoves,
+      currentColorCount: config.initialColorCount,
+      currentBoardSize: config.initialBoardSize,
+      board: [],
+      emptyCells: new Set(),
+      finished: false,
+    };
+    showPlayScreen();
+    setupCurrentBoard();
+    saveRunStorage();
+  }
+
+  function showPlayScreen() {
+    el.setupScreen.classList.remove('active');
+    el.playScreen.classList.add('active');
+  }
+
+  function showSetupScreen(clearRun = true) {
+    el.playScreen.classList.remove('active');
+    el.setupScreen.classList.add('active');
+    appState.currentRun = null;
+    if (clearRun) clearRunStorage();
+    updateAllUi();
+  }
+
+  function onGiveUpClicked() {
+    const ok = window.confirm('현재 진행 중인 플레이를 포기하고 초기 화면으로 돌아갈까요?');
+    if (!ok) return;
+    showSetupScreen(true);
+  }
+
+  function setupCurrentBoard() {
+    const run = appState.currentRun;
+    if (!run) return;
+    const generated = generateBoard(run.currentBoardSize, run.currentColorCount);
+    run.board = generated.board;
+    run.emptyCells = generated.emptyCells;
+    run.finished = false;
+    renderGameUi();
+    requestAnimationFrame(fitBoardToViewport);
+    saveRunStorage();
+  }
+
+  function generateBoard(size, colorCount) {
+    const board = Array.from({ length: size }, () => Array.from({ length: size }, () => 0));
+    const clusterStrength = getClusterStrength(appState.currentRun.mainStage, colorCount);
+    for (let row = 0; row < size; row += 1) {
+      for (let col = 0; col < size; col += 1) {
+        const neighborCandidates = [];
+        if (row > 0) neighborCandidates.push(board[row - 1][col]);
+        if (col > 0) neighborCandidates.push(board[row][col - 1]);
+        let colorIndex = Math.floor(Math.random() * colorCount);
+        if (neighborCandidates.length && Math.random() < clusterStrength) {
+          colorIndex = neighborCandidates[Math.floor(Math.random() * neighborCandidates.length)];
+        }
+        board[row][col] = colorIndex;
+      }
+    }
+    const innerCells = [];
+    for (let row = 1; row < size - 1; row += 1) {
+      for (let col = 1; col < size - 1; col += 1) {
+        innerCells.push([row, col]);
+      }
+    }
+    const seed = innerCells[Math.floor(Math.random() * innerCells.length)] || [Math.floor(size / 2), Math.floor(size / 2)];
+    const emptyCells = new Set([`${seed[0]},${seed[1]}`]);
+    board[seed[0]][seed[1]] = EMPTY_CELL;
+    return { board, emptyCells };
+  }
+
+  function getClusterStrength(mainStage, colorCount) {
+    const loosenByStage = Math.min(0.18, (mainStage - 1) * 0.02);
+    const loosenByColor = Math.min(0.20, Math.max(0, colorCount - 3) * 0.04);
+    return clamp(0.68 - loosenByStage - loosenByColor, 0.20, 0.72);
+  }
+
+  function renderGameUi() {
+    const run = appState.currentRun;
+    if (!run) return;
+    el.moveCounter.textContent = `선택 횟수: ${run.remainingMoves}`;
+    el.stageIndicator.textContent = `Stage ${getVisibleStageNumber(run)}`;
+    el.substageIndicator.textContent = `${run.mainStage}-${run.subStage}`;
+    el.boardInfo.textContent = `${run.currentBoardSize}x${run.currentBoardSize} · ${run.currentColorCount}색`;
+    el.boardStatus.textContent = `${run.config.presetName} · 드래그 이동 / 두 손가락 확대·축소`;
+    renderBoard();
+    renderColorToolbar();
+  }
+
+  function renderBoard() {
+    const run = appState.currentRun;
+    el.board.innerHTML = '';
+    el.board.style.gridTemplateColumns = `repeat(${run.currentBoardSize}, var(--cell-size))`;
+    el.board.style.gridTemplateRows = `repeat(${run.currentBoardSize}, var(--cell-size))`;
+    for (let row = 0; row < run.currentBoardSize; row += 1) {
+      for (let col = 0; col < run.currentBoardSize; col += 1) {
+        const cellValue = run.board[row][col];
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        if (cellValue === EMPTY_CELL) {
+          cell.classList.add('empty');
+        } else {
+          cell.style.backgroundColor = getPaletteColor(cellValue);
+        }
+        el.board.appendChild(cell);
+      }
+    }
+  }
+
+  function renderColorToolbar() {
+    const run = appState.currentRun;
+    const available = getAvailableAdjacentColors(run.board, run.emptyCells);
+    el.colorToolbar.innerHTML = '';
+    for (let colorIndex = 0; colorIndex < run.currentColorCount; colorIndex += 1) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'color-btn';
+      button.style.backgroundColor = getPaletteColor(colorIndex);
+      button.title = `색상 ${colorIndex + 1}`;
+      const usable = available.has(colorIndex);
+      button.classList.toggle('disabled-color', !usable);
+      button.addEventListener('click', () => selectColor(colorIndex));
+      el.colorToolbar.appendChild(button);
+    }
+  }
+
+  function selectColor(colorIndex) {
+    const run = appState.currentRun;
+    if (!run || run.finished || run.remainingMoves <= 0) return;
+    const expansion = expandEmptyAreaByColor(run.board, run.emptyCells, colorIndex);
+    if (expansion === 0) return;
+    playSound('colorPick');
+    run.remainingMoves -= 1;
+    renderGameUi();
+    saveRunStorage();
+    if (isBoardCleared(run.board)) {
+      onBoardCleared();
+      return;
+    }
+    if (run.remainingMoves <= 0) onBoardFailed();
+  }
+
+  function expandEmptyAreaByColor(board, emptyCells, colorIndex) {
+    const queue = [];
+    const collected = new Set();
+    const seen = new Set();
+    emptyCells.forEach((key) => {
+      const [row, col] = key.split(',').map(Number);
+      queue.push([row, col]);
       seen.add(key);
-      if (board[nextRow][nextCol] === colorIndex) {
-        collected.add(key);
-        queue.push([nextRow, nextCol]);
+    });
+    while (queue.length) {
+      const [row, col] = queue.shift();
+      for (const [nr, nc] of getNeighborCoords(row, col, board.length)) {
+        const key = `${nr},${nc}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (board[nr][nc] === colorIndex) {
+          collected.add(key);
+          queue.push([nr, nc]);
+        }
       }
     }
+    collected.forEach((key) => {
+      const [row, col] = key.split(',').map(Number);
+      board[row][col] = EMPTY_CELL;
+      emptyCells.add(key);
+    });
+    return collected.size;
   }
 
-  collected.forEach((key) => {
-    const [row, col] = key.split(',').map(Number);
-    board[row][col] = EMPTY_CELL;
-    emptyCells.add(key);
-  });
+  function getAvailableAdjacentColors(board, emptyCells) {
+    const available = new Set();
+    emptyCells.forEach((key) => {
+      const [row, col] = key.split(',').map(Number);
+      for (const [nr, nc] of getNeighborCoords(row, col, board.length)) {
+        const value = board[nr][nc];
+        if (value !== EMPTY_CELL) available.add(value);
+      }
+    });
+    return available;
+  }
 
-  return collected.size;
-}
-
-function getAvailableAdjacentColors(board, emptyCells) {
-  const available = new Set();
-  emptyCells.forEach((key) => {
-    const [row, col] = key.split(',').map(Number);
-    for (const [nextRow, nextCol] of getNeighborCoords(row, col, board.length)) {
-      const value = board[nextRow][nextCol];
-      if (value !== EMPTY_CELL) {
-        available.add(value);
+  function isBoardCleared(board) {
+    for (const row of board) {
+      for (const value of row) {
+        if (value !== EMPTY_CELL) return false;
       }
     }
-  });
-  return available;
-}
-
-function isBoardCleared(board) {
-  for (let row = 0; row < board.length; row += 1) {
-    for (let col = 0; col < board.length; col += 1) {
-      if (board[row][col] !== EMPTY_CELL) return false;
-    }
+    return true;
   }
-  return true;
-}
 
-function onStageCleared() {
-  const run = appState.currentRun;
-  if (!run) return;
-  run.finished = true;
-  playSound('success');
+  function onBoardCleared() {
+    const run = appState.currentRun;
+    run.finished = true;
+    playSound('success');
 
-  if (run.stageIndex >= run.config.stagesPerPlay) {
+    const next = getNextProgress(run);
+    const boardGrew = next.boardSize > run.currentBoardSize;
+    const addedMoves = run.config.stageClearMoveBonus + (boardGrew ? run.config.boardGrowMoveBonus : 0);
     showOverlay(
-      '클리어 성공',
-      `모든 스테이지를 클리어했습니다. '${run.config.presetName}' 플레이가 종료되었습니다. 화면을 눌러 초기 화면으로 돌아갑니다.`,
-      '초기 화면으로',
+      '스테이지 클리어',
+      `다음 판으로 이동합니다.\nStage ${next.visibleStage} · ${next.boardSize}x${next.boardSize} · ${next.colorCount}색\n선택 횟수 +${addedMoves}`,
+      '다음 판으로',
       () => {
-        showSetupScreen(true);
+        run.mainStage = next.mainStage;
+        run.subStage = next.subStage;
+        run.currentColorCount = next.colorCount;
+        run.currentBoardSize = next.boardSize;
+        run.remainingMoves += addedMoves;
+        saveRunStorage();
+        setupCurrentBoard();
       }
     );
-    return;
   }
 
-  const nextStageIndex = run.stageIndex + 1;
-  const nextColorCount = computeStageColorCount(run.config, nextStageIndex);
-  const nextBoardSize = computeStageBoardSize(run.config, nextStageIndex);
-  const boardGrew = nextBoardSize > run.currentBoardSize;
-  const nextMoves = run.remainingMoves + run.config.stageClearMoveBonus + (boardGrew ? run.config.boardGrowMoveBonus : 0);
-
-  showOverlay(
-    '스테이지 클리어',
-    `다음 스테이지로 이동합니다.\nStage ${nextStageIndex} · ${nextBoardSize}x${nextBoardSize} · ${nextColorCount}색\n선택 횟수 +${run.config.stageClearMoveBonus}${boardGrew && run.config.boardGrowMoveBonus ? `, 보드 확장 보너스 +${run.config.boardGrowMoveBonus}` : ''}`,
-    '다음 스테이지',
-    () => {
-      run.stageIndex = nextStageIndex;
-      run.currentColorCount = nextColorCount;
-      run.currentBoardSize = nextBoardSize;
-      run.remainingMoves = nextMoves;
-      saveRunStorage();
-      setupStageBoard();
-    }
-  );
-}
-
-function onStageFailed() {
-  const run = appState.currentRun;
-  if (!run) return;
-  run.finished = true;
-  playSound('fail');
-  showOverlay(
-    '게임 오버',
-    `선택 횟수를 모두 사용했습니다. '${run.config.presetName}' 플레이를 종료하고 초기 화면으로 돌아갑니다.`,
-    '초기 화면으로',
-    () => {
-      showSetupScreen(true);
-    }
-  );
-}
-
-function computeStageColorCount(config, stageIndex) {
-  const stepCount = Math.floor((stageIndex - 1) / config.colorIncreaseEvery);
-  return Math.min(config.maxColorCount, config.initialColorCount + stepCount * config.colorIncreaseAmount);
-}
-
-function computeStageBoardSize(config, stageIndex) {
-  const stepCount = Math.floor((stageIndex - 1) / config.boardIncreaseEvery);
-  return Math.min(config.maxBoardSize, config.initialBoardSize + stepCount * config.boardIncreaseAmount);
-}
-
-function showOverlay(title, message, buttonText, handler) {
-  el.overlayTitle.textContent = title;
-  el.overlayMessage.innerHTML = escapeHtml(message).replace(/\n/g, '<br />');
-  el.overlayActionBtn.textContent = buttonText;
-  appState.overlayHandler = handler;
-  el.overlay.classList.remove('hidden');
-}
-
-function hideOverlay() {
-  el.overlay.classList.add('hidden');
-}
-
-
-function serializeRun(run) {
-  return {
-    config: cloneConfig(run.config),
-    stageIndex: run.stageIndex,
-    remainingMoves: run.remainingMoves,
-    currentColorCount: run.currentColorCount,
-    currentBoardSize: run.currentBoardSize,
-    board: run.board.map((row) => [...row]),
-    emptyCells: Array.from(run.emptyCells),
-    finished: Boolean(run.finished),
-  };
-}
-
-function deserializeRun(raw) {
-  if (!raw || typeof raw !== 'object') return null;
-  const config = sanitizeConfig(raw.config || {});
-  const stageIndex = clampInt(raw.stageIndex, 1, config.stagesPerPlay, 1);
-  const currentColorCount = clampInt(raw.currentColorCount, 2, config.maxColorCount, config.initialColorCount);
-  const currentBoardSize = clampInt(raw.currentBoardSize, 3, config.maxBoardSize, config.initialBoardSize);
-  const remainingMoves = clampInt(raw.remainingMoves, 0, 999, config.initialMoves);
-  const board = Array.isArray(raw.board) ? raw.board.map((row) => Array.isArray(row) ? row.map((value) => Number(value)) : []) : [];
-  if (board.length !== currentBoardSize || board.some((row) => row.length !== currentBoardSize)) return null;
-
-  const emptyCellsArray = Array.isArray(raw.emptyCells) ? raw.emptyCells : [];
-  const emptyCells = new Set(emptyCellsArray.map((item) => String(item)));
-
-  return {
-    config,
-    stageIndex,
-    remainingMoves,
-    currentColorCount,
-    currentBoardSize,
-    board,
-    emptyCells,
-    finished: Boolean(raw.finished),
-  };
-}
-
-function floodFromSeed(board, startRow, startCol, colorIndex) {
-  const visited = new Set();
-  const queue = [[startRow, startCol]];
-  while (queue.length) {
-    const [row, col] = queue.shift();
-    const key = `${row},${col}`;
-    if (visited.has(key)) continue;
-    visited.add(key);
-    for (const [nextRow, nextCol] of getNeighborCoords(row, col, board.length)) {
-      if (board[nextRow][nextCol] !== colorIndex) continue;
-      const nextKey = `${nextRow},${nextCol}`;
-      if (!visited.has(nextKey)) queue.push([nextRow, nextCol]);
-    }
+  function onBoardFailed() {
+    const run = appState.currentRun;
+    run.finished = true;
+    playSound('fail');
+    showOverlay(
+      '게임 오버',
+      `선택 횟수를 모두 사용했습니다.\n초기 화면으로 돌아갑니다.`,
+      '초기 화면으로',
+      () => showSetupScreen(true)
+    );
   }
-  return visited;
-}
 
-function getNeighborCoords(row, col, size) {
-  const coords = [];
-  if (row > 0) coords.push([row - 1, col]);
-  if (row < size - 1) coords.push([row + 1, col]);
-  if (col > 0) coords.push([row, col - 1]);
-  if (col < size - 1) coords.push([row, col + 1]);
-  return coords;
-}
+  function getNextProgress(run) {
+    let mainStage = run.mainStage;
+    let subStage = run.subStage + 1;
+    if (subStage > run.config.subStagesPerStage) {
+      mainStage += 1;
+      subStage = 1;
+    }
+    return {
+      mainStage,
+      subStage,
+      colorCount: computeStageColorCount(run.config, mainStage),
+      boardSize: computeStageBoardSize(run.config, mainStage),
+      visibleStage: ((mainStage - 1) * run.config.subStagesPerStage) + subStage,
+    };
+  }
 
-function getPaletteColor(index) {
-  return PALETTE[index % PALETTE.length];
-}
+  function getVisibleStageNumber(run) {
+    return ((run.mainStage - 1) * run.config.subStagesPerStage) + run.subStage;
+  }
 
-function cloneConfig(config) {
-  return JSON.parse(JSON.stringify(config));
-}
+  function computeStageColorCount(config, mainStage) {
+    const steps = Math.floor((mainStage - 1) / config.colorIncreaseEveryStages);
+    const maxValue = config.maxColorCount == null ? PALETTE.length : config.maxColorCount;
+    return Math.min(maxValue, config.initialColorCount + steps * config.colorIncreaseAmount);
+  }
 
-function clampInt(value, min, max, fallback) {
-  const number = Number.isFinite(value) ? Math.round(value) : fallback;
-  return Math.min(max, Math.max(min, number));
-}
+  function computeStageBoardSize(config, mainStage) {
+    const steps = Math.floor((mainStage - 1) / config.boardIncreaseEveryStages);
+    const maxValue = config.maxBoardSize == null ? MAX_FALLBACK_BOARD_SIZE : config.maxBoardSize;
+    return Math.min(maxValue, config.initialBoardSize + steps * config.boardIncreaseAmount);
+  }
 
-function escapeHtml(text) {
-  return String(text)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
-}
+  function fitBoardToViewport() {
+    const viewport = el.boardViewport;
+    if (!viewport || !appState.currentRun) return;
+    const boardRect = el.board.getBoundingClientRect();
+    const contentWidth = el.board.offsetWidth + 48;
+    const contentHeight = el.board.offsetHeight + 48;
+    const vw = viewport.clientWidth;
+    const vh = viewport.clientHeight;
+    if (!contentWidth || !contentHeight || !vw || !vh || !boardRect.width) return;
+    const scale = clamp(Math.min((vw - 24) / contentWidth, (vh - 24) / contentHeight, 1.8), 0.45, 2.2);
+    appState.boardView.scale = scale;
+    appState.boardView.x = (vw - contentWidth * scale) / 2;
+    appState.boardView.y = (vh - contentHeight * scale) / 2;
+    applyBoardTransform();
+  }
 
-init();
+  function applyBoardTransform() {
+    el.boardCanvas.style.transform = `translate(${round2(appState.boardView.x)}px, ${round2(appState.boardView.y)}px) scale(${appState.boardView.scale})`;
+  }
+
+  function showOverlay(title, message, buttonText, handler) {
+    el.overlayTitle.textContent = title;
+    el.overlayMessage.innerHTML = escapeHtml(message).replace(/\n/g, '<br>');
+    el.overlayActionBtn.textContent = buttonText;
+    appState.overlayHandler = handler;
+    el.overlay.classList.remove('hidden');
+  }
+
+  function hideOverlay() {
+    el.overlay.classList.add('hidden');
+  }
+
+  function serializeRun(run) {
+    return {
+      config: cloneConfig(run.config),
+      mainStage: run.mainStage,
+      subStage: run.subStage,
+      remainingMoves: run.remainingMoves,
+      currentColorCount: run.currentColorCount,
+      currentBoardSize: run.currentBoardSize,
+      board: run.board.map((row) => [...row]),
+      emptyCells: Array.from(run.emptyCells),
+      finished: !!run.finished,
+    };
+  }
+
+  function deserializeRun(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const config = sanitizeConfig(raw.config || {});
+    const currentColorMax = config.maxColorCount == null ? PALETTE.length : config.maxColorCount;
+    const currentBoardMax = config.maxBoardSize == null ? MAX_FALLBACK_BOARD_SIZE : config.maxBoardSize;
+    const board = Array.isArray(raw.board) ? raw.board.map((row) => Array.isArray(row) ? row.map((value) => Number(value)) : []) : [];
+    const currentBoardSize = clampInt(raw.currentBoardSize, 3, currentBoardMax, config.initialBoardSize);
+    if (board.length !== currentBoardSize || board.some((row) => row.length !== currentBoardSize)) return null;
+    return {
+      config,
+      mainStage: clampInt(raw.mainStage, 1, 99999, 1),
+      subStage: clampInt(raw.subStage, 1, config.subStagesPerStage, 1),
+      remainingMoves: clampInt(raw.remainingMoves, 0, 999999, config.initialMoves),
+      currentColorCount: clampInt(raw.currentColorCount, 2, currentColorMax, config.initialColorCount),
+      currentBoardSize,
+      board,
+      emptyCells: new Set(Array.isArray(raw.emptyCells) ? raw.emptyCells.map((item) => String(item)) : []),
+      finished: !!raw.finished,
+    };
+  }
+
+  function getNeighborCoords(row, col, size) {
+    const coords = [];
+    if (row > 0) coords.push([row - 1, col]);
+    if (row < size - 1) coords.push([row + 1, col]);
+    if (col > 0) coords.push([row, col - 1]);
+    if (col < size - 1) coords.push([row, col + 1]);
+    return coords;
+  }
+
+  function getPaletteColor(index) {
+    return PALETTE[index % PALETTE.length];
+  }
+
+  function cloneConfig(config) {
+    return JSON.parse(JSON.stringify(config));
+  }
+
+  function clampInt(value, min, max, fallback) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return fallback;
+    return Math.min(max, Math.max(min, Math.round(number)));
+  }
+
+  function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  function round2(value) {
+    return Math.round(value * 100) / 100;
+  }
+
+  function toNumber(value) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : NaN;
+  }
+
+  function toOptionalNumber(value) {
+    if (value === '' || value == null) return null;
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  }
+
+  function toExportText(payload) {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+  }
+
+  function fromExportText(text) {
+    return JSON.parse(decodeURIComponent(escape(atob(String(text).trim()))));
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+})();
